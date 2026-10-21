@@ -1,0 +1,50 @@
+/* ChessBoard design tokens — blue-black. Generated from replica/design/tokens.json. */
+:root {
+  /* color roles */
+  --color-bg: #070B12;
+  --color-surface: #0D1522;
+  --color-surface-raised: #121D30;
+  --color-border: #1C2A44;
+  --color-border-input: #4A69AF;
+  --color-text: #E8EDF6;
+  --color-text-muted: #8B99B0;
+  --color-accent: #2E77FF;        /* links, focus rings, highlights */
+  --color-accent-strong: #1D5FE8; /* primary button fill */
+  --color-on-accent: #FFFFFF;
+  --color-accent-soft: #122855;   /* selected tiles, chips, active tabs */
+  --color-danger: #F2555A;
+  --color-success: #3ECF6E;
+  --color-warning: #F5A524;
+  /* board */
+  --color-board-light: #D9E1EE;
+  --color-board-dark: #54749F;
+  --color-last-move: #3D63B8;     /* last-move square tint */
+  --color-move-hint: rgba(46, 119, 255, 0.35);
+  --color-check: #F2555A;
+
+  /* type */
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-xs: 500 12px/16px var(--font-sans);
+  --text-sm: 400 14px/20px var(--font-sans);
+  --text-base: 400 16px/24px var(--font-sans);
+  --text-lg: 600 20px/28px var(--font-sans);
+  --text-xl: 700 28px/34px var(--font-sans);
+  --text-display: 700 40px/44px var(--font-sans);
+
+  /* space (4/8 base) */
+  --space-0: 0px; --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
+
+  /* radius */
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-pill: 999px;
+
+  /* shadow */
+  --shadow-card: 0 1px 2px rgba(0,0,0,.40), 0 2px 6px rgba(0,0,0,.30);
+  --shadow-pop: 0 12px 40px rgba(0,0,0,.55);
+
+  /* motion */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --ease: cubic-bezier(.2,.8,.2,1);
+}
