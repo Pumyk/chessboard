@@ -5,7 +5,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/Button";
-import { cancelQuick, cachedRatings, createBotGame, getMe, logout, quickPair, refreshMe } from "@/lib/datalayer";
+import {
+  cancelQuick, cachedRatings, createBotGame, createChallenge, getChallenge,
+  getMe, logout, quickPair, refreshMe,
+} from "@/lib/datalayer";
 
 // The full chess.com preset set
 const CONTROLS: { label: string; seconds: number; increment: number; group: string }[] = [
@@ -28,7 +31,7 @@ const TIPS = [
   "Tip: trade pieces when you're ahead, keep the tension when behind.",
 ];
 
-type Mode = "idle" | "searching" | "starting-bot";
+type Mode = "idle" | "searching" | "starting-bot" | "challenging";
 
 export default function Lobby() {
   const router = useRouter();
@@ -36,6 +39,8 @@ export default function Lobby() {
   const [ident, setIdent] = useState(getMe());
   const [ratings, setRatings] = useState<ReturnType<typeof cachedRatings>>([]);
   const [tick, setTick] = useState(0);
+  const [challenge, setChallenge] = useState<{ id: string; link: string } | null>(null);
+  const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<Mode>("idle");
   const [tip, setTip] = useState(0);
   const [seconds, setSeconds] = useState(0);
@@ -47,6 +52,15 @@ export default function Lobby() {
       .then(() => { setIdent(getMe()); setRatings(cachedRatings()); })
       .catch(() => null);
   }, [tick]);
+
+  useEffect(() => {
+    if (!challenge) return;
+    const id = setInterval(async () => {
+      const c = await getChallenge(challenge.id).catch(() => null);
+      if (c?.status === "accepted" && c.game_id) router.push(`/play?g=${c.game_id}`);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [challenge, router]);
 
   useEffect(() => {
     if (mode !== "searching") return;
@@ -90,6 +104,26 @@ export default function Lobby() {
     setMode("starting-bot");
     const g = await createBotGame(sel.seconds, sel.increment);
     router.push(`/play?g=${g.id}&tc=${sel.seconds}+${sel.increment}`);
+  }
+
+  if (challenge) {
+    const url = typeof window !== "undefined" ? `${window.location.origin}${challenge.link}` : challenge.link;
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-5 p-8 text-center">
+        <h1 className="text-lg font-bold">Waiting for your friend…</h1>
+        <p className="text-sm text-text-muted">Share this link — the game starts the moment they open it.</p>
+        <button
+          className="w-full truncate rounded-md border border-border bg-surface-raised p-3 text-sm"
+          onClick={async () => { await navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+          title="Copy challenge link"
+        >
+          {copied ? "Copied!" : url}
+        </button>
+        <Button variant="secondary" className="w-full" onClick={() => setChallenge(null)}>
+          Cancel challenge
+        </Button>
+      </main>
+    );
   }
 
   if (mode === "searching") {
@@ -180,6 +214,18 @@ export default function Lobby() {
       </Button>
       <Button variant="secondary" onClick={() => router.push(`/play?local=1&tc=${sel.seconds}+${sel.increment}`)} className="w-full">
         Pass and play on this device
+      </Button>
+      <Button
+        variant="secondary"
+        className="w-full"
+        onClick={async () => {
+          setMode("challenging");
+          const c = await createChallenge(sel.seconds, sel.increment).catch(() => null);
+          if (c) setChallenge(c);
+          else setMode("idle");
+        }}
+      >
+        Challenge a friend ({sel.label})
       </Button>
 
       <p className="text-center text-xs text-text-muted">

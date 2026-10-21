@@ -99,6 +99,24 @@ export async function loadChat(gameId: string): Promise<{ body: string; username
   return messages;
 }
 
+export async function createChallenge(
+  seconds: number, increment: number, rated = true
+): Promise<{ id: string; link: string }> {
+  const { challenge } = await api("/challenges", {
+    time_control_seconds: seconds, increment_seconds: increment, rated,
+  });
+  return challenge;
+}
+
+export async function acceptChallenge(id: string): Promise<{ status: string; game_id?: string }> {
+  return api(`/challenges/${id}`, {}, "POST");
+}
+
+export async function getChallenge(id: string): Promise<{ status: string; game_id: string | null }> {
+  const { challenge } = await api(`/challenges/${id}`);
+  return challenge;
+}
+
 export async function fetchLeaderboard(category: string): Promise<{ username: string; glicko: number; games_played: number }[]> {
   const { players } = await api(`/leaderboard?category=${encodeURIComponent(category)}`);
   return players;

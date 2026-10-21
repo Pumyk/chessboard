@@ -15,7 +15,7 @@ import { Dialog } from "@/components/Dialog";
 import { Button } from "@/components/Button";
 import { materialEval } from "@/lib/bot";
 import {
-  abortGame, bootstrap, claimTimeout, createBotGame, getMe, loadChat, loadGame, offerDraw,
+  abortGame, acceptChallenge, bootstrap, claimTimeout, createBotGame, getMe, loadChat, loadGame, offerDraw,
   resignGame, respondDraw, sendChat, serverBotMove, submitMove,
   type GameSnapshot, type Player,
 } from "@/lib/datalayer";
@@ -156,6 +156,16 @@ function PlayInner() {
   useEffect(() => {
     let alive = true;
     async function boot() {
+      // arriving from a challenge link: accept it and jump into the game
+      const challengeId = params.get("c");
+      if (challengeId) {
+        const r = await acceptChallenge(challengeId).catch(() => null);
+        if (r?.game_id) {
+          window.location.replace(`/play?g=${r.game_id}`);
+          return;
+        }
+        if (r?.status === "accepted" && r.game_id === undefined) { /* claimed by other accept */ }
+      }
       if (passPlay) {
         setWhiteMs((baseSec || 600) * 1000);
         setBlackMs((baseSec || 600) * 1000);

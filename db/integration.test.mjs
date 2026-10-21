@@ -88,7 +88,7 @@ r = await call("g3", "/me", {});
 r = await call("g3", `/games/${paired}`);
 ok("third user gets 404", r.status === 404, "status " + r.status);
 r = await call("g1", "/challenges", { time_control_seconds: 300 });
-ok("guest challenges rejected", r.status === 403, "status " + r.status);
+ok("guest can create a challenge", r.status === 200 && !!r.data.challenge?.id, "status " + r.status);
 
 
 // --- polling: first searcher learns about the pairing via re-POST ---
