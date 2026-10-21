@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ChessBoard design tokens — blue-black. Generated from replica/design/tokens.json. */
 :root {
   /* color roles */
