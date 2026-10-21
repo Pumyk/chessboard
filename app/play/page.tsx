@@ -11,8 +11,10 @@ import { MoveList } from "@/components/MoveList";
 import { EvalBar } from "@/components/EvalBar";
 import { Dialog } from "@/components/Dialog";
 import { Button } from "@/components/Button";
-import { botMove, materialEval } from "@/lib/bot";
-import { createBotGame, getMe, type GameSnapshot } from "@/lib/datalayer";
+import { materialEval } from "@/lib/bot";
+import {
+  createBotGame, getMe, resignGame, serverBotMove, submitMove, type GameSnapshot,
+} from "@/lib/datalayer";
 
 type Phase = "active" | "finished";
 
@@ -145,8 +147,13 @@ function PlayInner() {
     setLastMove({ from, to });
     setSelected(null);
     setFen(chess.fen());
+    // server is the authority: submit, then let it answer for the bot
+    if (game)
+      submitMove(game.id, { from, to, promotion: "q" }).then((r) => {
+        if (!r.ok) finish(); // server rejected (e.g. flagged): game is over there
+        else setTimeout(botTurn, 350);
+      });
     if (chess.isGameOver()) finish();
-    else setTimeout(botTurn, 350);
     return true;
   }
 
@@ -156,15 +163,17 @@ function PlayInner() {
     else setBlackMs((ms) => ms + inc);
   }
 
-  function botTurn() {
-    const m = botMove(chess.fen());
-    if (!m) {
+  async function botTurn() {
+    if (!game) return;
+    const r = await serverBotMove(game.id);
+    if (!r.san) {
       finish();
       return;
     }
-    chess.move(m);
+    let mv: Move;
+    try { mv = chess.move(r.san); } catch { finish(); return; }
     applyClockIncrement();
-    setLastMove({ from: m.from, to: m.to });
+    setLastMove({ from: mv.from, to: mv.to });
     setFen(chess.fen());
     if (chess.isGameOver()) finish();
   }
@@ -271,6 +280,7 @@ function PlayInner() {
         onCancel={() => setResignOpen(false)}
         onConfirm={() => {
           setResignOpen(false);
+          if (game) void resignGame(game.id);
           finish(null, "w");
         }}
       />
