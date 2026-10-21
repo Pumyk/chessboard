@@ -6,9 +6,10 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Chess, type Move, type Square as CSquare } from "chess.js";
-import { Board, type BoardSquare } from "@/components/Board";
+import { Board, GLYPH, type BoardSquare } from "@/components/Board";
 import { PlayerBanner } from "@/components/PlayerBanner";
 import { MoveList } from "@/components/MoveList";
+import { openingName } from "@/lib/openings";
 import { EvalBar } from "@/components/EvalBar";
 import { Dialog } from "@/components/Dialog";
 import { Button } from "@/components/Button";
@@ -68,6 +69,7 @@ function PlayInner() {
   const [phase, setPhase] = useState<Phase>("active");
   const [outcome, setOutcome] = useState<{ result: string; reason: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [pendingPromo, setPendingPromo] = useState<{ from: string; to: string } | null>(null);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
   const [whiteMs, setWhiteMs] = useState(600000);
   const [blackMs, setBlackMs] = useState(600000);
@@ -263,19 +265,27 @@ function PlayInner() {
   }
 
   function tryMove(from: string, to: string) {
-    const legal = (chess.moves({ square: from as CSquare, verbose: true }) as Move[]).find(
-      (m) => m.to === to
-    );
-    if (!legal) return false;
-    chess.move({ from, to, promotion: "q" }); // auto-queen; picker ships later
+    const legalAll = chess.moves({ square: from as CSquare, verbose: true }) as Move[];
+    if (!legalAll.some((m) => m.to === to)) return false;
+    if (legalAll.some((m) => m.to === to && m.promotion)) {
+      // promotion: stop and ask which piece
+      setPendingPromo({ from, to });
+      return true;
+    }
+    return commitMove(from, to);
+  }
+
+  function commitMove(from: string, to: string, promotion?: string) {
+    chess.move({ from, to, promotion: promotion ?? "q" });
     applyClockIncrement();
     setLastMove({ from, to });
     setSelected(null);
+    setPendingPromo(null);
     setFen(chess.fen());
     const gid = game?.id ?? gameId;
     if (gid) {
       appliedPly.current += 1;
-      submitMove(gid, { from, to, promotion: "q" }).then((r) => {
+      submitMove(gid, { from, to, promotion: promotion ?? "q" }).then((r) => {
         if (!r.ok) {
           if (r.code?.includes("timeout")) finish(myColor);
           else if (r.code?.includes("over") || r.code?.includes("not_found")) finish();
@@ -459,11 +469,40 @@ function PlayInner() {
       </div>
 
       {tab === "moves" ? (
-        <MoveList moves={history.map((m) => ({ san: m.san }))} />
+        <MoveList moves={history.map((m) => ({ san: m.san }))} opening={openingName(history.map((m) => m.san))} />
       ) : (
         <EvalBar cp={materialEval(chess)} />
       )}
 
+      {pendingPromo && (
+        <div
+          role="dialog"
+          aria-label="Choose promotion piece"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60"
+        >
+          <div className="rounded-lg border border-border bg-surface p-4 shadow-card">
+            <p className="mb-3 text-center text-sm font-semibold text-text">Promote to…</p>
+            <div className="flex gap-2">
+              {(["q", "r", "b", "n"] as const).map((p) => (
+                <button
+                  key={p}
+                  aria-label={`Promote to ${p}`}
+                  className="grid size-14 place-items-center rounded-md border border-border bg-surface hover:bg-accent-soft text-4xl"
+                  onClick={() => commitMove(pendingPromo.from, pendingPromo.to, p)}
+                >
+                  {GLYPH[p]}
+                </button>
+              ))}
+            </div>
+            <button
+              className="mt-3 w-full text-sm text-text-muted hover:text-text"
+              onClick={() => setPendingPromo(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <Dialog
         open={resignOpen}
         danger

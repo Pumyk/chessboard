@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import type { Square as CSquare } from "chess.js";
 
-const GLYPH: Record<string, string> = {
+export const GLYPH: Record<string, string> = {
   p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚",
 };
 
@@ -41,7 +41,11 @@ export function Board({
       aria-label="Chess board"
       className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-lg shadow-card"
     >
-      {squares.map(({ square, piece }) => {
+      {squares.map(({ square, piece }, i) => {
+        const row = Math.floor(i / 8);
+        const col = i % 8;
+        const isBottom = row === 7;
+        const isLeft = col === 0;
         const isDark = (square.charCodeAt(0) + Number(square[1])) % 2 === 0;
         const isSelected = selected === square;
         const isTarget = legalTargets.has(square);
@@ -56,6 +60,16 @@ export function Board({
             className={`relative grid place-items-center ${isDark ? "bg-board-dark" : "bg-board-light"}
               focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2`}
           >
+            {isLeft && (
+              <span aria-hidden className="absolute left-0.5 top-0.5 text-[10px] font-semibold leading-none opacity-60">
+                {square[1]}
+              </span>
+            )}
+            {isBottom && (
+              <span aria-hidden className="absolute bottom-0.5 right-1 text-[10px] font-semibold leading-none opacity-60">
+                {square[0]}
+              </span>
+            )}
             {isLast && <span aria-hidden className="absolute inset-0 bg-last-move opacity-45" />}
             {isCheck && (
               <span aria-hidden className="absolute inset-0 bg-check opacity-35" />

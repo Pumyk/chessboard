@@ -1,3 +1,5 @@
+import postgres from "postgres";
+
 const BASE = "http://localhost:3100/api";
 const jars = new Map();
 let pass = 0, fail = 0;
@@ -15,6 +17,23 @@ async function call(guest, path, body, method) {
   if (sc.length) jars.set(guest, sc.map(c => c.split(";")[0]).join("; "));
   let data; try { data = await res.json(); } catch { data = {}; }
   return { status: res.status, data };
+}
+
+// Clean slate: stale search tickets from crashed runs break pairing tests.
+// The pglite socket shim occasionally resets new connections — retry a few
+// times and degrade silently if the DB can't be reached.
+if (process.env.DATABASE_URL) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const sql = postgres(process.env.DATABASE_URL, { max: 1 });
+      await sql`delete from search_tickets`;
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 750));
+    }
+  }
+  // no sql.end: closing the socket emits an unhandled error event in the
+  // pglite shim that kills the process; the connection dies with the test.
 }
 
 let r = await call("g1", "/me", {});

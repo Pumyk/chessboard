@@ -3,7 +3,15 @@
 
 export type Ply = { san: string };
 
-export function MoveList({ moves, activePly }: { moves: Ply[]; activePly?: number }) {
+export function MoveList({
+  moves,
+  activePly,
+  opening,
+}: {
+  moves: Ply[];
+  activePly?: number;
+  opening?: string | null;
+}) {
   const rows: { n: number; white?: string; black?: string }[] = [];
   moves.forEach((m, i) => {
     const n = Math.floor(i / 2) + 1;
@@ -12,6 +20,11 @@ export function MoveList({ moves, activePly }: { moves: Ply[]; activePly?: numbe
   });
   return (
     <div className="rounded-md border border-border bg-surface p-3">
+      {opening && (
+        <p className="mb-2 border-b border-border pb-2 text-sm font-semibold text-text">
+          {opening}
+        </p>
+      )}
       {moves.length === 0 ? (
         <p className="py-2 text-center text-sm text-text-muted">No moves yet — game start.</p>
       ) : (
