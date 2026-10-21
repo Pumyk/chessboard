@@ -40,6 +40,7 @@ export default function Lobby() {
   const [ratings, setRatings] = useState<ReturnType<typeof cachedRatings>>([]);
   const [tick, setTick] = useState(0);
   const [challenge, setChallenge] = useState<{ id: string; link: string } | null>(null);
+  const [elapsed, setElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
   const [mode, setMode] = useState<Mode>("idle");
   const [tip, setTip] = useState(0);
@@ -61,6 +62,12 @@ export default function Lobby() {
     }, 2000);
     return () => clearInterval(id);
   }, [challenge, router]);
+
+  useEffect(() => {
+    if (mode !== "searching") { setElapsed(0); return; }
+    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(t);
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== "searching") return;
@@ -139,6 +146,11 @@ export default function Lobby() {
             {String(Math.floor(seconds / 60)).padStart(2, "0")}:{String(seconds % 60).padStart(2, "0")}
           </p>
         </div>
+        {elapsed >= 15 && (
+          <p role="status" className="text-sm text-text-muted">
+            Still searching — widening the rating range to find the closest match.
+          </p>
+        )}
         <p key={tip} className="min-h-10 text-sm text-text-muted">
           {TIPS[tip]}
         </p>
@@ -170,6 +182,7 @@ export default function Lobby() {
         </div>
         <nav className="flex gap-2 text-sm">
           <a href="/leaderboard" className="text-text-muted hover:text-text">Leaderboard</a>
+          <a href="/settings" className="text-text-muted hover:text-text">Settings</a>
           {ident.name === "You" ? (
             <a href="/account" className="text-text-muted hover:text-text">Sign up / Log in</a>
           ) : (

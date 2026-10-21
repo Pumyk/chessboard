@@ -15,6 +15,8 @@ export type BoardSquare = {
 };
 
 export function Board({
+  theme,
+  showCoords = true,
   board,
   orientation = "white",
   selected,
@@ -23,6 +25,8 @@ export function Board({
   checkSquare,
   onSquare,
 }: {
+  theme?: { light: string; dark: string };
+  showCoords?: boolean;
   board: BoardSquare[];
   orientation?: "white" | "black";
   selected?: string | null;
@@ -57,15 +61,16 @@ export function Board({
             role="gridcell"
             aria-label={`${square}${piece ? `, ${piece.color === "w" ? "white" : "black"} ${piece.type}` : ", empty"}`}
             onClick={() => onSquare(square)}
-            className={`relative grid place-items-center ${isDark ? "bg-board-dark" : "bg-board-light"}
+            style={{ backgroundColor: isDark ? (theme?.dark ?? "#769656") : (theme?.light ?? "#eeeed2") }}
+            className={`relative grid place-items-center
               focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2`}
           >
-            {isLeft && (
+            {showCoords !== false && isLeft && (
               <span aria-hidden className="absolute left-0.5 top-0.5 text-[10px] font-semibold leading-none opacity-60">
                 {square[1]}
               </span>
             )}
-            {isBottom && (
+            {showCoords !== false && isBottom && (
               <span aria-hidden className="absolute bottom-0.5 right-1 text-[10px] font-semibold leading-none opacity-60">
                 {square[0]}
               </span>

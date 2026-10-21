@@ -19,7 +19,8 @@ import {
   resignGame, respondDraw, sendChat, serverBotMove, submitMove,
   type GameSnapshot, type Player,
 } from "@/lib/datalayer";
-import { sounds } from "@/lib/sounds";
+import { sounds, setSoundEnabled } from "@/lib/sounds";
+import { getCoords, getSound, getTheme } from "@/lib/themes";
 
 type Phase = "active" | "finished";
 
@@ -85,7 +86,10 @@ function PlayInner() {
   const [chat, setChat] = useState<{ body: string; username: string }[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [lowBeeped, setLowBeeped] = useState<"w" | "b" | null>(null);
+  const [boardTheme, setBoardTheme] = useState(getTheme());
+  const [boardCoords, setBoardCoords] = useState(true);
   const [copied, setCopied] = useState(false);
+
   const appliedPly = useRef(0);
   const overRef = useRef(false);
 
@@ -153,6 +157,12 @@ function PlayInner() {
 
   // Bootstrap: an explicit game id means a real game (human or bot, from the
   // server); no id is the legacy bot-game flow.
+  useEffect(() => {
+    setBoardTheme(getTheme());
+    setBoardCoords(getCoords());
+    setSoundEnabled(getSound());
+  }, []);
+
   useEffect(() => {
     let alive = true;
     async function boot() {
@@ -441,6 +451,8 @@ function PlayInner() {
       />
 
       <Board
+        theme={boardTheme}
+        showCoords={boardCoords}
         board={board}
         orientation={orientation}
         selected={selected}
