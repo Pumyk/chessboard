@@ -71,5 +71,51 @@ ok("third user gets 404", r.status === 404, "status " + r.status);
 r = await call("g1", "/challenges", { time_control_seconds: 300 });
 ok("guest challenges rejected", r.status === 403, "status " + r.status);
 
+
+// --- polling: first searcher learns about the pairing via re-POST ---
+r = await call("g4", "/me", {});
+r = await call("g4", "/games/quick", { time_control_seconds: 300, increment_seconds: 0 });
+ok("g4 searching first", r.data.status === "searching" && !!r.data.ticket_id, JSON.stringify(r.data));
+const g4Ticket = r.data.ticket_id;
+r = await call("g5", "/me", {});
+r = await call("g5", "/games/quick", { time_control_seconds: 300, increment_seconds: 0 });
+ok("g5 paired", r.data.status === "paired" && !!r.data.game_id, JSON.stringify(r.data));
+const pollGame = r.data.game_id;
+r = await call("g4", "/games/quick", { time_control_seconds: 300, increment_seconds: 0 });
+ok("g4 poll returns paired", r.data.status === "paired" && r.data.game_id === pollGame, JSON.stringify(r.data));
+
+// --- draw offer + accept ---
+r = await call("g4", `/games/${pollGame}/draw-offer`, {});
+ok("draw offer", r.status === 200 && r.data.ok === true, JSON.stringify(r.data));
+r = await call("g5", `/games/${pollGame}`);
+ok("offerer visible to opponent", r.data.game?.draw_offer_by !== null, JSON.stringify(r.data.game?.draw_offer_by));
+r = await call("g4", `/games/${pollGame}/draw-respond`, { accept: true });
+ok("offerer cannot self-accept", r.status >= 400, JSON.stringify(r.data));
+r = await call("g5", `/games/${pollGame}/draw-respond`, { accept: true });
+ok("draw accepted", r.status === 200 && r.data.ok === true, JSON.stringify(r.data));
+r = await call("g5", `/games/${pollGame}`);
+ok("game drawn 1/2-1/2", r.data.game?.status === "finished" && r.data.game?.result === "1/2-1/2" && r.data.game?.end_reason === "draw_agreement");
+
+// --- abort before first move ---
+r = await call("g6", "/me", {});
+r = await call("g6", "/bots", { time_control_seconds: 180, increment_seconds: 0 });
+const abortGame = r.data.game_id;
+r = await call("g6", `/games/${abortGame}/abort`, {});
+ok("abort pre-move", r.status === 200 && r.data.ok === true, JSON.stringify(r.data));
+r = await call("g6", `/games/${abortGame}`);
+ok("aborted game result *", r.data.game?.status === "finished" && r.data.game?.result === "*" && r.data.game?.end_reason === "aborted");
+
+// --- claim-timeout: mover flagged, opponent claims ---
+r = await call("g7", "/me", {});
+r = await call("g8", "/me", {});
+r = await call("g7", "/games/quick", { time_control_seconds: 15, increment_seconds: 0 }); // bullet 15s
+r = await call("g8", "/games/quick", { time_control_seconds: 15, increment_seconds: 0 });
+ok("g7/g8 paired bullet", r.data.status === "paired" || r.data.status === "searching", JSON.stringify(r.data));
+const bulletGame = r.data.game_id ?? (await call("g7", "/games/quick", { time_control_seconds: 15, increment_seconds: 0 })).data.game_id;
+r = await call("g7", `/games/${bulletGame}/moves`, { from: "e2", to: "e4" });
+ok("bullet first move", r.status === 200, JSON.stringify(r.data));
+r = await call("g8", `/games/${bulletGame}/claim-timeout`, {});
+ok("claim rejected while clock runs", r.status >= 400, JSON.stringify(r.data));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

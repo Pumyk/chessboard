@@ -71,7 +71,9 @@ create table games (
   ended_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint result_set_when_finished check (status = 'active' or (result <> '*' and end_reason is not null and ended_at is not null)),
+  constraint result_set_when_finished check (
+    status = 'active'
+    or (end_reason is not null and ended_at is not null and (result <> '*' or end_reason = 'aborted'))),
   constraint not_playing_self check (white_id <> black_id)
 );
 create index on games (status, category, created_at desc);
@@ -110,8 +112,7 @@ create table search_tickets (
   status ticket_status not null default 'searching',
   game_id uuid references games(id) on delete set null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint one_live_ticket_per_user unique (user_id)  -- see partial index below
+  updated_at timestamptz not null default now()
 );
 create unique index one_searching_ticket
   on search_tickets (user_id) where (status = 'searching');

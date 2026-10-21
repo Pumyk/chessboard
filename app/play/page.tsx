@@ -1,6 +1,7 @@
 "use client";
-// S05 live game + S06 post-game, slice version: you (white) vs bot (black).
-// Clocks run client-side here; the backend makes them server-authoritative.
+// S05 live game + S06 post-game. Handles both bot games and quick-paired
+// human games: my-color board, opponent-move polling, draw offers, abort
+// before the first move, resign, and server-authoritative results.
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -13,27 +14,44 @@ import { Dialog } from "@/components/Dialog";
 import { Button } from "@/components/Button";
 import { materialEval } from "@/lib/bot";
 import {
-  createBotGame, getMe, resignGame, serverBotMove, submitMove, type GameSnapshot,
+  abortGame, bootstrap, claimTimeout, createBotGame, getMe, loadGame, offerDraw,
+  resignGame, respondDraw, serverBotMove, submitMove, type GameSnapshot, type Player,
 } from "@/lib/datalayer";
 
 type Phase = "active" | "finished";
 
-function resultText(chess: Chess, timeoutSide: "w" | "b" | null): { result: string; reason: string } {
+const END_REASON_LABEL: Record<string, string> = {
+  checkmate: "Checkmate",
+  resignation: "Resignation",
+  timeout: "Time out",
+  draw_agreement: "Draw by agreement",
+  aborted: "Aborted",
+  stalemate: "Stalemate",
+  repetition: "Threefold repetition",
+  insufficient_material: "Not enough material",
+  fifty_move: "Fifty-move rule",
+};
+
+function serverResultText(result: string, reason: string | null): string {
+  if (result === "*") return "Game aborted";
+  const why = reason ? ` — ${END_REASON_LABEL[reason] ?? reason}` : "";
+  if (result === "1-0") return `1-0 · White wins${why}`;
+  if (result === "0-1") return `0-1 · Black wins${why}`;
+  if (result === "1/2-1/2") return `1/2-1/2 · Draw${why}`;
+  return why.startsWith(" — ") ? why.slice(3) : (reason ?? "");
+}
+
+function localResultText(chess: Chess, timeoutSide: "w" | "b" | null): { result: string; reason: string } {
   if (chess.isCheckmate())
-    return {
-      result: chess.turn() === "w" ? "0-1 · Black wins" : "1-0 · White wins",
-      reason: "Checkmate",
-    };
+    return { result: chess.turn() === "w" ? "0-1 · Black wins" : "1-0 · White wins", reason: "Checkmate" };
   if (timeoutSide)
     return {
       result: timeoutSide === "w" ? "0-1 · Black wins" : "1-0 · White wins",
-      reason: "White ran out of time",
+      reason: timeoutSide === "w" ? "White ran out of time" : "Black ran out of time",
     };
   if (chess.isStalemate()) return { result: "1/2-1/2 · Draw", reason: "Stalemate" };
-  if (chess.isInsufficientMaterial())
-    return { result: "1/2-1/2 · Draw", reason: "Not enough material to mate" };
-  if (chess.isThreefoldRepetition())
-    return { result: "1/2-1/2 · Draw", reason: "Threefold repetition" };
+  if (chess.isInsufficientMaterial()) return { result: "1/2-1/2 · Draw", reason: "Not enough material" };
+  if (chess.isThreefoldRepetition()) return { result: "1/2-1/2 · Draw", reason: "Threefold repetition" };
   if (chess.isDraw()) return { result: "1/2-1/2 · Draw", reason: "Fifty-move rule" };
   return { result: "*", reason: "" };
 }
@@ -41,8 +59,11 @@ function resultText(chess: Chess, timeoutSide: "w" | "b" | null): { result: stri
 function PlayInner() {
   const params = useSearchParams();
   const me = getMe();
-  const [game, setGame] = useState<GameSnapshot | null>(null);
   const chess = useMemo(() => new Chess(), []);
+  const [game, setGame] = useState<GameSnapshot | null>(null);
+  const [human, setHuman] = useState(false);
+  const [myColor, setMyColor] = useState<"w" | "b">("w");
+  const [opponent, setOpponent] = useState<Player>({ id: "op", name: "Opponent", avatar: "OP", rating: null });
   const [fen, setFen] = useState(chess.fen());
   const [phase, setPhase] = useState<Phase>("active");
   const [outcome, setOutcome] = useState<{ result: string; reason: string } | null>(null);
@@ -51,19 +72,16 @@ function PlayInner() {
   const [whiteMs, setWhiteMs] = useState(600000);
   const [blackMs, setBlackMs] = useState(600000);
   const [resignOpen, setResignOpen] = useState(false);
-  const [drawAsked, setDrawAsked] = useState(false);
+  const [abortOpen, setAbortOpen] = useState(false);
+  const [drawOffered, setDrawOffered] = useState(false); // I offered
+  const [incomingDraw, setIncomingDraw] = useState(false); // opponent offered me
   const [tab, setTab] = useState<"moves" | "analysis">("moves");
-  const [, forceRender] = useState(0);
+  const appliedPly = useRef(0);
   const overRef = useRef(false);
 
   const tc = params.get("tc") ?? "600+0";
   const [baseSec, incSec] = tc.split("+").map(Number);
-
-  useEffect(() => {
-    setWhiteMs((baseSec || 600) * 1000);
-    setBlackMs((baseSec || 600) * 1000);
-    createBotGame(baseSec || 600, incSec || 0).then(setGame);
-  }, [baseSec, incSec]);
+  const gameId = params.get("g");
 
   const finish = useCallback(
     (timeoutSide: "w" | "b" | null = null, resignationBy: "w" | "b" | null = null) => {
@@ -75,7 +93,7 @@ function PlayInner() {
           reason: "Resignation",
         });
       } else {
-        setOutcome(resultText(chess, timeoutSide));
+        setOutcome(localResultText(chess, timeoutSide));
       }
       setPhase("finished");
       setSelected(null);
@@ -83,15 +101,112 @@ function PlayInner() {
     [chess]
   );
 
-  // clocks
+  const finishFromServer = useCallback((result: string, reason: string | null) => {
+    overRef.current = true;
+    setOutcome({ result: serverResultText(result, reason), reason: reason ?? "" });
+    setPhase("finished");
+    setSelected(null);
+  }, []);
+
+  const syncServerClocks = useCallback((clocks: { w: number; b: number }) => {
+    setWhiteMs(clocks.w);
+    setBlackMs(clocks.b);
+  }, []);
+
+  // Replay any server moves we haven't applied yet (opponent's moves arrive
+  // by polling; ours were already applied optimistically).
+  const applyServerMoves = useCallback(
+    (moves: { ply: number; san: string }[]) => {
+      for (const m of moves) {
+        if (m.ply <= appliedPly.current) continue;
+        try {
+          chess.move(m.san);
+          const hist = chess.history({ verbose: true }) as Move[];
+          const last = hist[hist.length - 1];
+          setLastMove({ from: last.from, to: last.to });
+          appliedPly.current = m.ply;
+        } catch {
+          break; // desync: stop, next poll re-fetches
+        }
+      }
+      setFen(chess.fen());
+    },
+    [chess]
+  );
+
+  // Bootstrap: an explicit game id means a real game (human or bot, from the
+  // server); no id is the legacy bot-game flow.
   useEffect(() => {
-    if (phase !== "active") return;
+    let alive = true;
+    async function boot() {
+      if (!gameId) {
+        const g = await createBotGame(baseSec || 600, incSec || 0);
+        if (!alive) return;
+        setGame(g);
+        setHuman(false);
+        setMyColor("w");
+        setOpponent(g.black);
+        setWhiteMs((baseSec || 600) * 1000);
+        setBlackMs((baseSec || 600) * 1000);
+        return;
+      }
+      const s = await loadGame(gameId).catch(() => null);
+      if (!alive || !s) return;
+      const g = s.game;
+      const isBot = g.type === "bot";
+      const who = me.id !== "me" ? me : await bootstrap(); // getMe() fallback until session loads
+      const color = g.white_id === who.id ? "w" : "b";
+      const otherId = color === "w" ? g.black_id : g.white_id;
+      const other = s.players.find((p) => p.id === otherId);
+      setHuman(!isBot);
+      setMyColor(color);
+      setOpponent({
+        id: otherId,
+        name: isBot ? "Bot" : other?.username ?? "Opponent",
+        avatar: (other?.username ?? "OP").slice(0, 2).toUpperCase(),
+        rating: null,
+      });
+      setGame({
+        id: g.id, white: who, black: opponent, timeControlSeconds: g.time_control_seconds,
+        incrementSeconds: g.increment_seconds, category: g.category as GameSnapshot["category"],
+        type: g.type as GameSnapshot["type"], rated: g.rated,
+      });
+      syncServerClocks(s.clocks);
+      applyServerMoves(s.moves);
+      if (g.status === "finished") finishFromServer(g.result, g.end_reason);
+    }
+    void boot();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId, baseSec, incSec]);
+
+  // Poll human games for opponent moves, draw offers and results.
+  useEffect(() => {
+    if (!human || !gameId || phase === "finished") return;
+    const id = setInterval(async () => {
+      const s = await loadGame(gameId).catch(() => null);
+      if (!s) return;
+      const g = s.game;
+      syncServerClocks(s.clocks);
+      applyServerMoves(s.moves);
+      setIncomingDraw(g.draw_offer_by !== null && g.draw_offer_by !== me.id);
+      setDrawOffered(g.draw_offer_by === me.id);
+      if (g.status === "finished") finishFromServer(g.result, g.end_reason);
+    }, 1500);
+    return () => clearInterval(id);
+  }, [human, gameId, phase, syncServerClocks, applyServerMoves, finishFromServer, me.id]);
+
+  // clocks tick locally between server syncs
+  useEffect(() => {
+    if (phase !== "active" || !game) return;
     const id = setInterval(() => {
       const now = Date.now();
       setWhiteMs((ms) => {
         if (chess.turn() === "w") {
           const next = ms - (now - last);
-          if (next <= 0) return (finish("w"), 0);
+          if (next <= 0) return (flag("w"), 0);
           return next;
         }
         return ms;
@@ -99,7 +214,7 @@ function PlayInner() {
       setBlackMs((ms) => {
         if (chess.turn() === "b") {
           const next = ms - (now - last);
-          if (next <= 0) return (finish("b"), 0);
+          if (next <= 0) return (flag("b"), 0);
           return next;
         }
         return ms;
@@ -107,11 +222,15 @@ function PlayInner() {
       last = now;
     }, 100);
     let last = Date.now();
+    function flag(side: "w" | "b") {
+      if (gameId && human) void claimTimeout(gameId);
+      finish(side);
+    }
     return () => clearInterval(id);
-  }, [phase, chess, finish]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, chess, finish, human, gameId]);
 
-  // board state
-  const board: BoardSquare[] = useMemo(() => {
+  const board = useMemo(() => {
     const out: BoardSquare[] = [];
     chess.board().forEach((row, r) =>
       row.forEach((sq, c) => {
@@ -137,41 +256,55 @@ function PlayInner() {
     return null;
   }, [fen, chess]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function applyClockIncrement() {
+    const inc = (incSec || game?.incrementSeconds || 0) * 1000;
+    if (chess.turn() === "w") setWhiteMs((ms) => ms + inc);
+    else setBlackMs((ms) => ms + inc);
+  }
+
   function tryMove(from: string, to: string) {
     const legal = (chess.moves({ square: from as CSquare, verbose: true }) as Move[]).find(
       (m) => m.to === to
     );
     if (!legal) return false;
-    chess.move({ from, to, promotion: "q" }); // auto-queen in the slice; picker ships later
+    chess.move({ from, to, promotion: "q" }); // auto-queen; picker ships later
     applyClockIncrement();
     setLastMove({ from, to });
     setSelected(null);
     setFen(chess.fen());
-    // server is the authority: submit, then let it answer for the bot
-    if (game)
-      submitMove(game.id, { from, to, promotion: "q" }).then((r) => {
-        if (!r.ok) finish(); // server rejected (e.g. flagged): game is over there
-        else setTimeout(botTurn, 350);
+    const gid = game?.id ?? gameId;
+    if (gid) {
+      appliedPly.current += 1;
+      submitMove(gid, { from, to, promotion: "q" }).then((r) => {
+        if (!r.ok) {
+          if (r.code?.includes("timeout")) finish(myColor);
+          else if (r.code?.includes("over") || r.code?.includes("not_found")) finish();
+          // not_your_turn / illegal: a fresh poll will resync us
+        } else if (!human) {
+          setTimeout(botTurn, 350);
+        }
       });
+    }
     if (chess.isGameOver()) finish();
     return true;
   }
 
-  function applyClockIncrement() {
-    const inc = (incSec || 0) * 1000;
-    if (chess.turn() === "w") setWhiteMs((ms) => ms + inc);
-    else setBlackMs((ms) => ms + inc);
-  }
-
   async function botTurn() {
-    if (!game) return;
-    const r = await serverBotMove(game.id);
+    const gid = game?.id ?? gameId;
+    if (!gid) return;
+    const r = await serverBotMove(gid);
     if (!r.san) {
       finish();
       return;
     }
     let mv: Move;
-    try { mv = chess.move(r.san); } catch { finish(); return; }
+    try {
+      mv = chess.move(r.san);
+    } catch {
+      finish();
+      return;
+    }
+    appliedPly.current = chess.history().length;
     applyClockIncrement();
     setLastMove({ from: mv.from, to: mv.to });
     setFen(chess.fen());
@@ -179,37 +312,55 @@ function PlayInner() {
   }
 
   function onSquare(sq: string) {
-    if (phase !== "active" || chess.turn() !== "w") return;
+    if (phase !== "active" || chess.turn() !== myColor) return;
     if (selected && tryMove(selected, sq)) return;
     const piece = chess.get(sq as CSquare);
-    if (piece && piece.color === "w") setSelected(sq);
+    if (piece && piece.color === myColor) setSelected(sq);
     else setSelected(null);
   }
 
-  const history = chess.history({ verbose: true }) as Move[];
-  const myTurn = phase === "active" && chess.turn() === "w";
-  const lowTime = (ms: number) => ms < 10000 && phase === "active";
+  async function doDraw() {
+    const gid = game?.id ?? gameId;
+    if (!gid) return;
+    if (human) {
+      const r = await offerDraw(gid).catch(() => null);
+      if (r?.ok) setDrawOffered(true);
+    } else {
+      setDrawOffered(true); // bot always declines
+    }
+  }
 
-  if (!game)
+  const history = chess.history({ verbose: true }) as Move[];
+  const myTurn = phase === "active" && chess.turn() === myColor;
+  const canAbort = history.length === 0;
+  const lowTime = (ms: number) => ms < 10000 && phase === "active";
+  const meName = me.name === "You" ? "You" : me.name;
+
+  if (!game && !gameId)
     return (
       <main className="grid min-h-dvh place-items-center">
         <p className="text-sm text-text-muted">Preparing board…</p>
       </main>
     );
 
+  const top = myColor === "w" ? opponent : { ...me, name: meName };
+  const bottom = myColor === "w" ? { ...me, name: meName } : opponent;
+  const orientation = myColor === "w" ? "white" : "black";
+
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-3 p-4">
       <PlayerBanner
-        name={game.black.name}
-        rating={game.black.rating}
-        avatar="B"
-        clockMs={blackMs}
-        active={phase === "active" && chess.turn() === "b"}
-        low={lowTime(blackMs)}
+        name={top.name}
+        rating={top.rating}
+        avatar={top.avatar}
+        clockMs={myColor === "w" ? blackMs : whiteMs}
+        active={phase === "active" && chess.turn() !== myColor}
+        low={lowTime(myColor === "w" ? blackMs : whiteMs)}
       />
 
       <Board
         board={board}
+        orientation={orientation}
         selected={selected}
         legalTargets={legalTargets}
         lastMove={lastMove}
@@ -218,33 +369,75 @@ function PlayInner() {
       />
 
       <PlayerBanner
-        name="You"
-        rating={me.rating}
-        avatar="YU"
-        clockMs={whiteMs}
-        active={phase === "active" && chess.turn() === "w"}
-        low={lowTime(whiteMs)}
+        name={bottom.name}
+        rating={bottom.rating}
+        avatar={bottom.avatar}
+        clockMs={myColor === "w" ? whiteMs : blackMs}
+        active={phase === "active" && chess.turn() === myColor}
+        low={lowTime(myColor === "w" ? whiteMs : blackMs)}
       />
 
       <p className="text-center text-sm text-text-muted" aria-live="polite">
         {phase === "finished"
-          ? `${outcome?.result} — ${outcome?.reason}`
+          ? `${outcome?.result}${outcome?.reason ? ` — ${outcome.reason}` : ""}`
           : myTurn
             ? "Your move"
-            : "Bot is thinking…"}
+            : `${top.name} is thinking…`}
       </p>
+
+      {incomingDraw && phase === "active" && (
+        <div className="flex items-center gap-2 rounded-md border border-border bg-surface p-2" role="alertdialog" aria-label="Draw offer">
+          <span className="flex-1 text-sm">{top.name} offers a draw.</span>
+          <Button
+            variant="secondary"
+            className="px-3"
+            onClick={async () => {
+              const gid = game?.id ?? gameId;
+              if (gid) await respondDraw(gid, true).catch(() => null);
+              setIncomingDraw(false);
+              if (gid) finishFromServer("1/2-1/2", "draw_agreement");
+            }}
+          >
+            Accept
+          </Button>
+          <Button
+            className="px-3"
+            onClick={async () => {
+              const gid = game?.id ?? gameId;
+              if (gid) await respondDraw(gid, false).catch(() => null);
+              setIncomingDraw(false);
+            }}
+          >
+            Decline
+          </Button>
+        </div>
+      )}
+
+      {drawOffered && phase === "active" && !incomingDraw && (
+        <p role="status" className="rounded-md border border-border bg-surface p-3 text-center text-sm text-text-muted">
+          {human
+            ? "Draw offered — waiting for your opponent…"
+            : "You offered a draw. The bot declined — play on!"}
+        </p>
+      )}
 
       {phase === "active" ? (
         <div className="flex gap-2">
-          <Button variant="secondary" className="flex-1" onClick={() => setDrawAsked(true)}>
+          <Button variant="secondary" className="flex-1" onClick={doDraw}>
             ½ Draw
           </Button>
-          <Button variant="secondary" className="flex-1" onClick={() => setResignOpen(true)}>
-            ⚑ Resign
-          </Button>
+          {canAbort ? (
+            <Button variant="secondary" className="flex-1" onClick={() => setAbortOpen(true)}>
+              ⊘ Abort
+            </Button>
+          ) : (
+            <Button variant="secondary" className="flex-1" onClick={() => setResignOpen(true)}>
+              ⚑ Resign
+            </Button>
+          )}
         </div>
       ) : (
-        <Button onClick={() => window.location.reload()} className="w-full">
+        <Button onClick={() => (window.location.href = "/")} className="w-full">
           New game
         </Button>
       )}
@@ -275,21 +468,31 @@ function PlayInner() {
         open={resignOpen}
         danger
         title="Resign this game?"
-        body="Resigning counts as a loss. The bot gets the point."
+        body={human ? "Resigning counts as a loss. Your opponent gets the point." : "Resigning counts as a loss. The bot gets the point."}
         confirmLabel="Resign"
         onCancel={() => setResignOpen(false)}
         onConfirm={() => {
           setResignOpen(false);
-          if (game) void resignGame(game.id);
-          finish(null, "w");
+          const gid = game?.id ?? gameId;
+          if (gid) void resignGame(gid);
+          finish(null, myColor);
         }}
       />
 
-      {drawAsked && phase === "active" && (
-        <p role="status" className="rounded-md border border-border bg-surface p-3 text-center text-sm text-text-muted">
-          You offered a draw. The bot declined — play on!
-        </p>
-      )}
+      <Dialog
+        open={abortOpen}
+        danger
+        title="Abort this game?"
+        body="Aborting is only possible before the first move. Repeatedly aborting games is unfair to opponents — abort only if this game can't be played."
+        confirmLabel="Abort game"
+        onCancel={() => setAbortOpen(false)}
+        onConfirm={async () => {
+          setAbortOpen(false);
+          const gid = game?.id ?? gameId;
+          if (gid) await abortGame(gid).catch(() => null);
+          finishFromServer("*", "aborted");
+        }}
+      />
     </main>
   );
 }

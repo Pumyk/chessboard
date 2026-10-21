@@ -92,6 +92,54 @@ export async function resignGame(gameId: string): Promise<{ ok: boolean }> {
   return api(`/games/${gameId}/resign`, {});
 }
 
+
+export async function quickPair(
+  seconds: number,
+  increment: number
+): Promise<{ status: "paired" | "searching"; game_id?: string; ticket_id?: string }> {
+  return api("/games/quick", {
+    time_control_seconds: seconds,
+    increment_seconds: increment,
+  });
+}
+
+export async function cancelQuick(ticketId: string): Promise<{ ok: boolean }> {
+  return api("/games/quick/cancel", { ticket_id: ticketId });
+}
+
+export async function loadGame(gameId: string): Promise<{
+  game: {
+    id: string; type: string; status: string; result: string; end_reason: string | null;
+    white_id: string; black_id: string; rated: boolean; category: string;
+    time_control_seconds: number; increment_seconds: number;
+    fen: string; turn: "w" | "b";
+    draw_offer_by: string | null;
+    clock_white_ms: number; clock_black_ms: number; turn_started_at: string;
+    first_move_at: string | null;
+  };
+  moves: { ply: number; san: string }[];
+  clocks: { w: number; b: number };
+  players: { id: string; username: string }[];
+}> {
+  return api(`/games/${gameId}`);
+}
+
+export async function offerDraw(gameId: string): Promise<{ ok: boolean }> {
+  return api(`/games/${gameId}/draw-offer`, {});
+}
+
+export async function respondDraw(gameId: string, accept: boolean): Promise<{ ok: boolean }> {
+  return api(`/games/${gameId}/draw-respond`, { accept });
+}
+
+export async function abortGame(gameId: string): Promise<{ ok: boolean }> {
+  return api(`/games/${gameId}/abort`, {});
+}
+
+export async function claimTimeout(gameId: string): Promise<{ ok: boolean }> {
+  return api(`/games/${gameId}/claim-timeout`, {});
+}
+
 export async function fetchGame(gameId: string): Promise<{
   game: {
     status: string; result: string; end_reason: string | null;
