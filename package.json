@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node db/migrate.mjs && node db/seed.mjs",
+    "build": "next build",
     "start": "next start"
   },
   "dependencies": {
