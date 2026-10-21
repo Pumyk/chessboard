@@ -7,6 +7,9 @@ import Link from "next/link";
 import {
   THEMES, getCoords, getSound, getThemeId, setCoords as saveCoords,
   setSound as saveSound, setThemeId,
+  PIECE_SETS,
+  getPieceSetId,
+  setPieceSetId,
 } from "@/lib/themes";
 import { setSoundEnabled } from "@/lib/sounds";
 
@@ -14,9 +17,11 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState(getThemeId());
   const [coords, setCoords] = useState(true);
   const [sound, setSound] = useState(true);
+  const [pieceSet, setPieceSetState] = useState<"classic" | "letters">("classic");
 
   useEffect(() => {
     setCoords(getCoords());
+    setPieceSetState(getPieceSetId());
     setSound(getSound());
     setSoundEnabled(getSound());
   }, []);
@@ -48,6 +53,28 @@ export default function SettingsPage() {
                 <span style={{ background: t.light }} />
               </span>
               <span className="text-[10px] text-text-muted">{t.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Piece set</h2>
+        <div className="grid grid-cols-2 gap-2">
+          {PIECE_SETS.map((ps) => (
+            <button
+              key={ps.id}
+              aria-label={`${ps.name} pieces`}
+              aria-pressed={pieceSet === ps.id}
+              onClick={() => { setPieceSetState(ps.id); setPieceSetId(ps.id); }}
+              className={`flex flex-col items-center gap-1 rounded-md border p-2 ${
+                pieceSet === ps.id ? "border-accent" : "border-border"
+              }`}
+            >
+              <span className="text-2xl leading-none">
+                {ps.id === "classic" ? "♕♚" : "KQ"}
+              </span>
+              <span className="text-[10px] text-text-muted">{ps.name}</span>
             </button>
           ))}
         </div>

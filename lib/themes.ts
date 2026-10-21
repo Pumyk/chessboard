@@ -1,5 +1,5 @@
 // Board themes + display preferences. Stored locally (no account needed),
-// applied by the Board component. Piece sets stay on the classic set.
+// applied by the Board component.
 
 export type Theme = { id: string; name: string; light: string; dark: string };
 
@@ -25,6 +25,28 @@ export function getTheme(): Theme {
 
 export function setThemeId(id: string) {
   localStorage.setItem("cb-theme", id);
+}
+
+// Piece sets: "classic" is the filled unicode set, "letters" is the minimal
+// K/Q/R/B/N/P set. Both are original to this build (no third-party art).
+export type PieceSet = { id: PieceSetId; name: string };
+export type PieceSetId = "classic" | "letters";
+
+export const PIECE_SETS: PieceSet[] = [
+  { id: "classic", name: "Classic" },
+  { id: "letters", name: "Letters" },
+];
+
+const DEFAULT_PIECES: PieceSetId = "classic";
+
+export function getPieceSetId(): PieceSetId {
+  if (typeof window === "undefined") return DEFAULT_PIECES;
+  const v = localStorage.getItem("cb-pieces");
+  return v === "letters" ? "letters" : DEFAULT_PIECES;
+}
+
+export function setPieceSetId(id: PieceSetId) {
+  localStorage.setItem("cb-pieces", id);
 }
 
 export function getCoords(): boolean {

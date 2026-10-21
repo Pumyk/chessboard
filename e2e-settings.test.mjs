@@ -43,6 +43,15 @@ await page.goto(B);
 const hasSettings = await page.locator('a[href="/settings"]').count();
 ok("settings link in lobby", hasSettings === 1);
 
+// piece set toggle: letters set persists
+await page.goto("http://localhost:3100/settings");
+await page.waitForLoadState("networkidle");
+await page.getByRole("button", { name: "Letters pieces" }).click();
+ok("letters piece set clickable", await page.getByRole("button", { name: "Letters pieces" }).getAttribute("aria-pressed") === "true");
+ok("letters set persisted", await page.evaluate(() => localStorage.getItem("cb-pieces") === "letters"));
+ok("letters set selected shows KQ preview", await page.locator('button[aria-label="Letters pieces"]').locator("span").first().textContent() === "KQ");
+
 await browser.close();
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

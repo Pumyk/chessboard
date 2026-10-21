@@ -5,6 +5,8 @@
 import { useMemo } from "react";
 import type { Square as CSquare } from "chess.js";
 
+const LETTER: Record<string, string> = { p: "P", n: "N", b: "B", r: "R", q: "Q", k: "K" };
+
 export const GLYPH: Record<string, string> = {
   p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚",
 };
@@ -15,6 +17,7 @@ export type BoardSquare = {
 };
 
 export function Board({
+  pieceSet,
   theme,
   showCoords = true,
   board,
@@ -25,6 +28,7 @@ export function Board({
   checkSquare,
   onSquare,
 }: {
+  pieceSet?: "classic" | "letters";
   theme?: { light: string; dark: string };
   showCoords?: boolean;
   board: BoardSquare[];
@@ -90,10 +94,10 @@ export function Board({
                 aria-hidden
                 className={`relative z-1 select-none text-[7vmin] leading-none sm:text-[34px] ${
                   piece.color === "w" ? "text-white" : "text-black"
-                }`}
+                } ${pieceSet === "letters" ? "font-bold" : ""}`}
                 style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,.4))" }}
               >
-                {GLYPH[piece.type]}
+                {pieceSet === "letters" ? LETTER[piece.type] : GLYPH[piece.type]}
               </span>
             )}
             {isSelected && (

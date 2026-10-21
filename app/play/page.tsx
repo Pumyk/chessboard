@@ -20,7 +20,7 @@ import {
   type GameSnapshot, type Player,
 } from "@/lib/datalayer";
 import { sounds, setSoundEnabled } from "@/lib/sounds";
-import { getCoords, getSound, getTheme } from "@/lib/themes";
+import { getCoords, getPieceSetId, getSound, getTheme } from "@/lib/themes";
 
 type Phase = "active" | "finished";
 
@@ -89,6 +89,7 @@ function PlayInner() {
   const [chatDraft, setChatDraft] = useState("");
   const [lowBeeped, setLowBeeped] = useState<"w" | "b" | null>(null);
   const [boardTheme, setBoardTheme] = useState(getTheme());
+  const [pieceSet, setPieceSet] = useState<"classic" | "letters">("classic");
   const [boardCoords, setBoardCoords] = useState(true);
   const [copied, setCopied] = useState(false);
 
@@ -161,6 +162,7 @@ function PlayInner() {
   // server); no id is the legacy bot-game flow.
   useEffect(() => {
     setBoardTheme(getTheme());
+    setPieceSet(getPieceSetId());
     setBoardCoords(getCoords());
     setSoundEnabled(getSound());
   }, []);
@@ -454,6 +456,7 @@ function PlayInner() {
 
       <Board
         theme={boardTheme}
+        pieceSet={pieceSet}
         showCoords={boardCoords}
         board={board}
         orientation={orientation}
