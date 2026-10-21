@@ -30,6 +30,7 @@ DATABASE_URL and SESSION_SECRET are read from the environment.
 - `node db/integration.test.mjs` — 33 core flow checks (quick pair, moves, ratings, timeout)
 - `node db/integration-auth.test.mjs` — 24 auth/skill/chat/leaderboard checks
 - `node db/integration-challenges.test.mjs` — 10 challenge-link checks
+- `node db/integration-engine.test.mjs` — 12 Stockfish engine checks (rated bots, post-game analysis)
 - `node e2e-human.test.mjs` / `e2e-promo.test.mjs` / `e2e-passplay.test.mjs` / `e2e-settings.test.mjs` — 27 browser checks
 
 ## Routes

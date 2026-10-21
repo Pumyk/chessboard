@@ -1,0 +1,48 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: chessboard
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/chessboard
+      SERVER_SECRET: ci-secret-123
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx next build
+      - run: node db/migrate.mjs
+      - run: node db/seed.mjs
+      - name: start server
+        run: |
+          npx next start -p 3100 &
+          for i in $(seq 1 30); do
+            curl -sf -X POST http://localhost:3100/api/me > /dev/null && echo "server up" && exit 0
+            sleep 1
+          done
+          echo "server did not come up"
+          exit 1
+      - run: node db/integration.test.mjs
+      - run: node db/integration-auth.test.mjs
+      - run: node db/integration-challenges.test.mjs
+      - run: node db/integration-engine.test.mjs
