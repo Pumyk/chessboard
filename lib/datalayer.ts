@@ -117,6 +117,13 @@ export async function getChallenge(id: string): Promise<{ status: string; game_i
   return challenge;
 }
 
+export type PlyEval = { ply: number; san: string | null; cp: number; mate: boolean };
+
+export async function analyseGame(id: string): Promise<PlyEval[]> {
+  const { evals } = await api(`/games/${id}/analysis`, {}, "POST");
+  return evals;
+}
+
 export async function fetchLeaderboard(category: string): Promise<{ username: string; glicko: number; games_played: number }[]> {
   const { players } = await api(`/leaderboard?category=${encodeURIComponent(category)}`);
   return players;

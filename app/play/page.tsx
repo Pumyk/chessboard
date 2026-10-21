@@ -15,7 +15,7 @@ import { Dialog } from "@/components/Dialog";
 import { Button } from "@/components/Button";
 import { materialEval } from "@/lib/bot";
 import {
-  abortGame, acceptChallenge, bootstrap, claimTimeout, createBotGame, getMe, loadChat, loadGame, offerDraw,
+  abortGame, acceptChallenge, analyseGame, bootstrap, claimTimeout, createBotGame, getMe, loadChat, loadGame, offerDraw,
   resignGame, respondDraw, sendChat, serverBotMove, submitMove,
   type GameSnapshot, type Player,
 } from "@/lib/datalayer";
@@ -81,6 +81,8 @@ function PlayInner() {
   const [drawOffered, setDrawOffered] = useState(false); // I offered
   const [incomingDraw, setIncomingDraw] = useState(false); // opponent offered me
   const [tab, setTab] = useState<"moves" | "analysis" | "chat">("moves");
+  const [engineEvals, setEngineEvals] = useState<{ ply: number; san: string | null; cp: number; mate: boolean }[] | null>(null);
+  const [analysing, setAnalysing] = useState(false);
   const [flipped, setFlipped] = useState(false);
   const [viewPly, setViewPly] = useState<number | null>(null); // null = live
   const [chat, setChat] = useState<{ body: string; username: string }[]>([]);
@@ -640,7 +642,61 @@ function PlayInner() {
       {tab === "moves" ? (
         <MoveList moves={history.map((m) => ({ san: m.san }))} opening={openingName(history.map((m) => m.san))} />
       ) : tab === "analysis" ? (
-        <EvalBar cp={materialEval(chess)} />
+        phase === "finished" ? (
+          <div className="flex flex-col gap-2">
+            <EvalBar
+              cp={engineEvals ? (engineEvals[Math.min(engineEvals.length - 1, browsing ? (viewPly ?? history.length) : history.length)]?.cp ?? 0) : materialEval(chess)}
+              mate={engineEvals?.[Math.min((engineEvals.length ?? 1) - 1, browsing ? (viewPly ?? history.length) : history.length)]?.mate}
+              label={engineEvals ? "Stockfish 11 WASM" : undefined}
+            />
+            {!engineEvals ? (
+              <Button
+                variant="secondary"
+                className="w-full"
+                disabled={analysing}
+                onClick={async () => {
+                  const gid = game?.id ?? gameId;
+                  if (!gid) return;
+                  setAnalysing(true);
+                  const evs = await analyseGame(gid).catch(() => null);
+                  setAnalysing(false);
+                  if (evs) setEngineEvals(evs);
+                }}
+              >
+                {analysing ? "Stockfish is thinking…" : "Run engine analysis"}
+              </Button>
+            ) : (
+              <ol className="max-h-48 overflow-y-auto text-sm">
+                {engineEvals.slice(1).map((e, i) => {
+                  const prev = engineEvals[i];
+                  const swing = e.cp - prev.cp; // white perspective change
+                  const moverIsWhite = e.ply % 2 === 1;
+                  const bad = moverIsWhite ? swing <= -150 : swing >= 150;
+                  const blunder = moverIsWhite ? swing <= -300 : swing >= 300;
+                  return (
+                    <li key={e.ply} className="flex items-center justify-between gap-2 px-1 py-0.5">
+                      <span className="text-text-muted">
+                        {Math.ceil(e.ply / 2)}
+                        {moverIsWhite ? "." : "…"} {e.san}
+                      </span>
+                      <span className={blunder ? "font-bold text-red-600 dark:text-red-400" : bad ? "font-semibold" : ""}>
+                        {(e.cp / 100).toFixed(1)}
+                        {blunder ? " !" : bad ? " ?" : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <EvalBar cp={materialEval(chess)} />
+            <p className="text-xs text-text-muted">
+              Engine analysis unlocks when the game is over — no engine help while it is live.
+            </p>
+          </div>
+        )
       ) : (
         <div className="flex flex-col gap-2 rounded-md border border-border bg-surface p-2">
           <div

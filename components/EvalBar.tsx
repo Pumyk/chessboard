@@ -2,7 +2,7 @@
 // Eval bar for post-game review. In the slice it uses material count
 // (centipawn approximation); Stockfish WASM replaces it in milestone 2.
 
-export function EvalBar({ cp, mate }: { cp: number; mate?: boolean }) {
+export function EvalBar({ cp, mate, label }: { cp: number; mate?: boolean; label?: string }) {
   // cp clamped to ±1000 -> 50/50 fill
   const clamped = mate ? (cp > 0 ? 1000 : -1000) : Math.max(-1000, Math.min(1000, cp));
   const whitePct = 50 + (clamped / 1000) * 50;
@@ -16,7 +16,7 @@ export function EvalBar({ cp, mate }: { cp: number; mate?: boolean }) {
         <span className="block bg-board-light" style={{ height: `${whitePct}%` }} />
       </div>
       <span className="text-xs text-text-muted">
-        Stockfish (material eval in this build)
+        {label ?? "Stockfish (material eval in this build)"}
         <br />
         {mate
           ? cp > 0
