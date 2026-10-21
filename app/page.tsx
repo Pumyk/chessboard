@@ -5,14 +5,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/Button";
-import { cancelQuick, createBotGame, getMe, quickPair } from "@/lib/datalayer";
+import { cancelQuick, cachedRatings, createBotGame, getMe, logout, quickPair, refreshMe } from "@/lib/datalayer";
 
+// The full chess.com preset set
 const CONTROLS: { label: string; seconds: number; increment: number; group: string }[] = [
   { label: "1 min", seconds: 60, increment: 0, group: "Bullet" },
   { label: "1 + 1", seconds: 60, increment: 1, group: "Bullet" },
+  { label: "2 + 1", seconds: 120, increment: 1, group: "Bullet" },
   { label: "3 min", seconds: 180, increment: 0, group: "Blitz" },
+  { label: "3 + 2", seconds: 180, increment: 2, group: "Blitz" },
   { label: "5 min", seconds: 300, increment: 0, group: "Blitz" },
   { label: "10 min", seconds: 600, increment: 0, group: "Rapid" },
+  { label: "10 + 5", seconds: 600, increment: 5, group: "Rapid" },
   { label: "15 + 10", seconds: 900, increment: 10, group: "Rapid" },
 ];
 
@@ -28,13 +32,21 @@ type Mode = "idle" | "searching" | "starting-bot";
 
 export default function Lobby() {
   const router = useRouter();
-  const [sel, setSel] = useState(CONTROLS[4]);
+  const [sel, setSel] = useState(CONTROLS[6]);
+  const [ident, setIdent] = useState(getMe());
+  const [ratings, setRatings] = useState<ReturnType<typeof cachedRatings>>([]);
+  const [tick, setTick] = useState(0);
   const [mode, setMode] = useState<Mode>("idle");
   const [tip, setTip] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const ticketRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
-  const me = getMe();
+  // identity + ratings refresh on every visit (login/logout, skill change)
+  useEffect(() => {
+    refreshMe()
+      .then(() => { setIdent(getMe()); setRatings(cachedRatings()); })
+      .catch(() => null);
+  }, [tick]);
 
   useEffect(() => {
     if (mode !== "searching") return;
@@ -105,9 +117,36 @@ export default function Lobby() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-4 p-4">
-      <header>
-        <h1 className="text-xl font-bold">ChessBoard</h1>
-        <p className="text-sm text-text-muted">Signed in as {me.name}</p>
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-bold">ChessBoard</h1>
+          <p className="text-sm text-text-muted">
+            Playing as {ident.name}
+            {ratings.length > 0 && (
+              <span aria-label="My ratings" className="ml-2">
+                {ratings.map((r) => (
+                  <span key={r.category} className="ml-1 text-xs">
+                    {r.category[0].toUpperCase()}
+                    {" "}{r.provisional ? `${r.glicko}±${200}` : r.glicko}
+                  </span>
+                ))}
+              </span>
+            )}
+          </p>
+        </div>
+        <nav className="flex gap-2 text-sm">
+          <a href="/leaderboard" className="text-text-muted hover:text-text">Leaderboard</a>
+          {ident.name === "You" ? (
+            <a href="/account" className="text-text-muted hover:text-text">Sign up / Log in</a>
+          ) : (
+            <button
+              className="text-text-muted hover:text-text"
+              onClick={async () => { await logout().catch(() => null); setTick((t) => t + 1); }}
+            >
+              Log out
+            </button>
+          )}
+        </nav>
       </header>
 
       <section aria-labelledby="tc-h" className="rounded-lg border border-border bg-surface p-4">

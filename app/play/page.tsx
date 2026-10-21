@@ -15,9 +15,11 @@ import { Dialog } from "@/components/Dialog";
 import { Button } from "@/components/Button";
 import { materialEval } from "@/lib/bot";
 import {
-  abortGame, bootstrap, claimTimeout, createBotGame, getMe, loadGame, offerDraw,
-  resignGame, respondDraw, serverBotMove, submitMove, type GameSnapshot, type Player,
+  abortGame, bootstrap, claimTimeout, createBotGame, getMe, loadChat, loadGame, offerDraw,
+  resignGame, respondDraw, sendChat, serverBotMove, submitMove,
+  type GameSnapshot, type Player,
 } from "@/lib/datalayer";
+import { sounds } from "@/lib/sounds";
 
 type Phase = "active" | "finished";
 
@@ -77,7 +79,13 @@ function PlayInner() {
   const [abortOpen, setAbortOpen] = useState(false);
   const [drawOffered, setDrawOffered] = useState(false); // I offered
   const [incomingDraw, setIncomingDraw] = useState(false); // opponent offered me
-  const [tab, setTab] = useState<"moves" | "analysis">("moves");
+  const [tab, setTab] = useState<"moves" | "analysis" | "chat">("moves");
+  const [flipped, setFlipped] = useState(false);
+  const [viewPly, setViewPly] = useState<number | null>(null); // null = live
+  const [chat, setChat] = useState<{ body: string; username: string }[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [lowBeeped, setLowBeeped] = useState<"w" | "b" | null>(null);
+  const [copied, setCopied] = useState(false);
   const appliedPly = useRef(0);
   const overRef = useRef(false);
 
@@ -99,6 +107,8 @@ function PlayInner() {
       }
       setPhase("finished");
       setSelected(null);
+      setViewPly(null);
+      sounds.gameEnd();
     },
     [chess]
   );
@@ -108,6 +118,8 @@ function PlayInner() {
     setOutcome({ result: serverResultText(result, reason), reason: reason ?? "" });
     setPhase("finished");
     setSelected(null);
+    setViewPly(null);
+    sounds.gameEnd();
   }, []);
 
   const syncServerClocks = useCallback((clocks: { w: number; b: number }) => {
@@ -127,6 +139,8 @@ function PlayInner() {
           const last = hist[hist.length - 1];
           setLastMove({ from: last.from, to: last.to });
           appliedPly.current = m.ply;
+          last.captured ? sounds.capture() : sounds.move();
+          if (chess.inCheck()) sounds.check();
         } catch {
           break; // desync: stop, next poll re-fetches
         }
@@ -197,7 +211,11 @@ function PlayInner() {
       setDrawOffered(g.draw_offer_by === me.id);
       if (g.status === "finished") finishFromServer(g.result, g.end_reason);
     }, 1500);
-    return () => clearInterval(id);
+    const chatId = setInterval(async () => {
+      const msgs = await loadChat(gameId).catch(() => null);
+      if (msgs) setChat(msgs.map(({ body, username }) => ({ body, username })));
+    }, 3000);
+    return () => { clearInterval(id); clearInterval(chatId); };
   }, [human, gameId, phase, syncServerClocks, applyServerMoves, finishFromServer, me.id]);
 
   // clocks tick locally between server syncs
@@ -232,9 +250,32 @@ function PlayInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, chess, finish, human, gameId]);
 
+  // warn once per side when a clock crosses under 10 seconds
+  useEffect(() => {
+    if (phase !== "active") return;
+    for (const side of ["w", "b"] as const) {
+      const ms = side === "w" ? whiteMs : blackMs;
+      if (ms < 10000 && lowBeeped !== side) {
+        setLowBeeped(side);
+        sounds.lowTime();
+      }
+    }
+  }, [whiteMs, blackMs, phase, lowBeeped]);
+
+  // browsing history: replay the live game up to viewPly in a scratch board
+  const history = chess.history({ verbose: true }) as Move[];
+  const viewChess = useMemo(() => {
+    if (viewPly === null || viewPly >= history.length) return chess;
+    const replay = new Chess();
+    for (let i = 0; i < viewPly; i++) replay.move(history[i].san);
+    return replay;
+  }, [viewPly, fen, chess]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const browsing = viewPly !== null && viewPly < history.length;
+
   const board = useMemo(() => {
     const out: BoardSquare[] = [];
-    chess.board().forEach((row, r) =>
+    viewChess.board().forEach((row, r) =>
       row.forEach((sq, c) => {
         const name = ("abcdefgh"[c] + (8 - r)) as CSquare;
         out.push({ square: sq ? (sq.square as CSquare) : name, piece: sq });
@@ -244,19 +285,19 @@ function PlayInner() {
   }, [fen, chess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const legalTargets = useMemo(() => {
-    if (!selected) return new Set<string>();
+    if (!selected || browsing) return new Set<string>();
     return new Set(
       (chess.moves({ square: selected as CSquare, verbose: true }) as Move[]).map((m) => m.to)
     );
   }, [selected, fen, chess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const checkSquare = useMemo(() => {
-    if (!chess.inCheck()) return null;
-    for (const row of chess.board())
+    if (!viewChess.inCheck()) return null;
+    for (const row of viewChess.board())
       for (const sq of row)
-        if (sq && sq.type === "k" && sq.color === chess.turn()) return sq.square;
+        if (sq && sq.type === "k" && sq.color === viewChess.turn()) return sq.square;
     return null;
-  }, [fen, chess]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewChess]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function applyClockIncrement() {
     const inc = (incSec || game?.incrementSeconds || 0) * 1000;
@@ -276,7 +317,9 @@ function PlayInner() {
   }
 
   function commitMove(from: string, to: string, promotion?: string) {
-    chess.move({ from, to, promotion: promotion ?? "q" });
+    const mv = chess.move({ from, to, promotion: promotion ?? "q" });
+    mv?.captured ? sounds.capture() : sounds.move();
+    if (chess.inCheck()) sounds.check();
     applyClockIncrement();
     setLastMove({ from, to });
     setSelected(null);
@@ -322,6 +365,7 @@ function PlayInner() {
   }
 
   function onSquare(sq: string) {
+    if (browsing) return;
     if (phase !== "active" || chess.turn() !== myColor) return;
     if (selected && tryMove(selected, sq)) return;
     const piece = chess.get(sq as CSquare);
@@ -340,10 +384,8 @@ function PlayInner() {
     }
   }
 
-  const history = chess.history({ verbose: true }) as Move[];
   const myTurn = phase === "active" && chess.turn() === myColor;
   const canAbort = history.length === 0;
-  const lowTime = (ms: number) => ms < 10000 && phase === "active";
   const meName = me.name === "You" ? "You" : me.name;
 
   if (!game && !gameId)
@@ -353,9 +395,16 @@ function PlayInner() {
       </main>
     );
 
-  const top = myColor === "w" ? opponent : { ...me, name: meName };
-  const bottom = myColor === "w" ? { ...me, name: meName } : opponent;
-  const orientation = myColor === "w" ? "white" : "black";
+  const mySide = myColor === "w" ? "white" : "black";
+  const oppSide = myColor === "w" ? "black" : "white";
+  const top = flipped ? { ...me, name: meName } : opponent;
+  const bottom = flipped ? opponent : { ...me, name: meName };
+  const orientation = flipped ? oppSide : mySide;
+  // clocks stay glued to the player, not the seat
+  const topClock = flipped ? (myColor === "w" ? whiteMs : blackMs) : myColor === "w" ? blackMs : whiteMs;
+  const bottomClock = flipped ? (myColor === "w" ? blackMs : whiteMs) : myColor === "w" ? whiteMs : blackMs;
+  const topLow = phase === "active" && topClock < 10000;
+  const bottomLow = phase === "active" && bottomClock < 10000;
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-3 p-4">
@@ -363,9 +412,9 @@ function PlayInner() {
         name={top.name}
         rating={top.rating}
         avatar={top.avatar}
-        clockMs={myColor === "w" ? blackMs : whiteMs}
+        clockMs={topClock}
         active={phase === "active" && chess.turn() !== myColor}
-        low={lowTime(myColor === "w" ? blackMs : whiteMs)}
+        low={topLow}
       />
 
       <Board
@@ -382,10 +431,46 @@ function PlayInner() {
         name={bottom.name}
         rating={bottom.rating}
         avatar={bottom.avatar}
-        clockMs={myColor === "w" ? whiteMs : blackMs}
+        clockMs={bottomClock}
         active={phase === "active" && chess.turn() === myColor}
-        low={lowTime(myColor === "w" ? whiteMs : blackMs)}
+        low={bottomLow}
       />
+
+      <div className="flex items-center justify-between gap-2">
+        <div role="group" aria-label="Move playback" className="flex gap-1">
+          {[
+            { label: "⏮", title: "First move", go: () => setViewPly(0), dis: !(history.length > 0) },
+            { label: "◀", title: "Previous move", go: () => setViewPly((p) => Math.max(0, (p ?? history.length) - 1)), dis: !(history.length > 0 && (viewPly ?? 1) > 0) },
+            { label: "▶", title: "Next move", go: () => setViewPly((p) => { const n = (p ?? 0) + 1; return n >= history.length ? null : n; }), dis: !browsing },
+            { label: "⏭", title: "Latest move", go: () => setViewPly(null), dis: !browsing },
+          ].map((b) => (
+            <button
+              key={b.label}
+              title={b.title}
+              aria-label={b.title}
+              disabled={b.dis}
+              onClick={b.go}
+              className="min-h-9 min-w-9 rounded-md border border-border bg-surface-raised text-sm disabled:opacity-40"
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setFlipped((f) => !f)}
+          aria-pressed={flipped}
+          aria-label={flipped ? "Board flipped — press to unflip" : "Flip board"}
+          title="Flip board"
+          className="min-h-9 rounded-md border border-border bg-surface-raised px-3 text-sm"
+        >
+          ⇅ Flip
+        </button>
+      </div>
+      {browsing && (
+        <p className="text-center text-xs text-text-muted" role="status">
+          Viewing move {viewPly} of {history.length} — press ⏭ to return to the live game
+        </p>
+      )}
 
       <p className="text-center text-sm text-text-muted" aria-live="polite">
         {phase === "finished"
@@ -447,13 +532,47 @@ function PlayInner() {
           )}
         </div>
       ) : (
-        <Button onClick={() => (window.location.href = "/")} className="w-full">
-          New game
-        </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Button onClick={() => (window.location.href = "/")} className="flex-1">
+              New game
+            </Button>
+            {!human && (
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={async () => {
+                  const g = await createBotGame(baseSec || 600, incSec || 0);
+                  window.location.href = `/play?g=${g.id}&tc=${baseSec || 600}+${incSec || 0}`;
+                }}
+              >
+                Rematch bot
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                const pgn = [
+                  `[White "${myColor === "w" ? meName : top.name}"]`,
+                  `[Black "${myColor === "w" ? top.name : meName}"]`,
+                  `[Result "${outcome?.result.split(" ")[0] ?? "*"}"]`,
+                  "",
+                  chess.pgn(),
+                ].join("\n");
+                void navigator.clipboard?.writeText(pgn);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? "Copied!" : "Copy PGN"}
+            </Button>
+          </div>
+        </div>
       )}
 
       <div role="tablist" aria-label="Game panels" className="mt-1 flex gap-3 border-b border-border text-sm">
-        {(["moves", "analysis"] as const).map((t) => (
+        {(["moves", "analysis", ...(human ? ["chat" as const] : [])] as const).map((t) => (
           <button
             key={t}
             role="tab"
@@ -463,15 +582,55 @@ function PlayInner() {
               tab === t ? "border-b-2 border-accent text-text" : "text-text-muted"
             }`}
           >
-            {t === "moves" ? "Moves" : "Analysis"}
+            {t === "moves" ? "Moves" : t === "analysis" ? "Analysis" : "Chat"}
           </button>
         ))}
       </div>
 
       {tab === "moves" ? (
         <MoveList moves={history.map((m) => ({ san: m.san }))} opening={openingName(history.map((m) => m.san))} />
-      ) : (
+      ) : tab === "analysis" ? (
         <EvalBar cp={materialEval(chess)} />
+      ) : (
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface p-2">
+          <div
+            aria-label="Chat messages"
+            className="flex max-h-40 flex-col gap-1 overflow-y-auto"
+          >
+            {chat.length === 0 && <p className="text-xs text-text-muted">Say hello — chat is only visible to the two players.</p>}
+            {chat.map((m, i) => (
+              <p key={i} className="text-sm">
+                <span className="font-semibold">{m.username === meName ? "You" : m.username}: </span>
+                <span className="text-text-muted">{m.body}</span>
+              </p>
+            ))}
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const gid = game?.id ?? gameId;
+              const text = chatDraft.trim();
+              if (!gid || !text) return;
+              setChatDraft("");
+              await sendChat(gid, text).catch(() => null);
+              const msgs = await loadChat(gid).catch(() => null);
+              if (msgs) setChat(msgs.map(({ body, username }) => ({ body, username })));
+            }}
+          >
+            <input
+              aria-label="Chat message"
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              maxLength={300}
+              className="min-h-9 flex-1 rounded-md border border-border bg-surface-raised px-2 text-sm"
+              placeholder="Message…"
+            />
+            <button type="submit" className="rounded-md border border-border bg-surface-raised px-3 text-sm">
+              Send
+            </button>
+          </form>
+        </div>
       )}
 
       {pendingPromo && (

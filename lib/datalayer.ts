@@ -3,6 +3,7 @@
 // createBotGame returns a real game row.
 
 export type Player = { id: string; name: string; avatar: string; rating: number | null };
+export type Rating = { category: "bullet" | "blitz" | "rapid"; glicko: number; games_played: number; provisional: boolean };
 export type GameSnapshot = {
   id: string;
   white: Player;
@@ -17,9 +18,9 @@ export type GameSnapshot = {
 const FALLBACK: Player = { id: "me", name: "You", avatar: "YU", rating: null };
 let cached: Player | null = null;
 
-async function api(path: string, body?: unknown): Promise<any> {
+async function api(path: string, body?: unknown, method?: string): Promise<any> {
   const res = await fetch(`/api${path}`, {
-    method: body === undefined ? "GET" : "POST",
+    method: method ?? (body === undefined ? "GET" : "POST"),
     headers: body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
@@ -33,6 +34,7 @@ async function api(path: string, body?: unknown): Promise<any> {
 export async function bootstrap(): Promise<Player> {
   const { profile, ratings } = await api("/me", {});
   const rapid = ratings.find((r: { category: string }) => r.category === "rapid");
+  myRatings = ratings;
   cached = {
     id: profile.id,
     name: profile.is_guest ? "You" : profile.username,
@@ -46,6 +48,60 @@ export function getMe(): Player {
   if (cached) return cached;
   if (typeof window !== "undefined") void bootstrap(); // async fill; UI re-renders later
   return FALLBACK;
+}
+
+export let myRatings: Rating[] = [];
+
+export function cachedRatings(): Rating[] {
+  return myRatings;
+}
+
+// Fetch fresh identity (after login/logout/skill change) and update the cache.
+export async function refreshMe(): Promise<Player> {
+  cached = null;
+  return bootstrap();
+}
+
+export async function signup(email: string, password: string, skillLevel?: number): Promise<Player> {
+  const { profile, ratings } = await api("/auth/signup", {
+    email, password, ...(skillLevel ? { skill_level: skillLevel } : {}),
+  });
+  cached = { id: profile.id, name: profile.username, avatar: profile.username.slice(0, 2).toUpperCase(), rating: null };
+  myRatings = ratings;
+  return cached;
+}
+
+export async function login(email: string, password: string): Promise<Player> {
+  const { profile, ratings } = await api("/auth/login", { email, password });
+  cached = { id: profile.id, name: profile.username, avatar: profile.username.slice(0, 2).toUpperCase(), rating: null };
+  myRatings = ratings;
+  return cached;
+}
+
+export async function logout(): Promise<void> {
+  await api("/auth/logout", {}, "POST");
+  cached = null;
+  myRatings = [];
+}
+
+export async function setSkillLevel(level: number): Promise<Rating[]> {
+  const { ratings } = await api("/me", { skill_level: level }, "PATCH");
+  myRatings = ratings;
+  return ratings;
+}
+
+export async function sendChat(gameId: string, text: string): Promise<void> {
+  await api(`/games/${gameId}/chat`, { body: text });
+}
+
+export async function loadChat(gameId: string): Promise<{ body: string; username: string; created_at: string }[]> {
+  const { messages } = await api(`/games/${gameId}/chat`);
+  return messages;
+}
+
+export async function fetchLeaderboard(category: string): Promise<{ username: string; glicko: number; games_played: number }[]> {
+  const { players } = await api(`/leaderboard?category=${encodeURIComponent(category)}`);
+  return players;
 }
 
 export async function createBotGame(
