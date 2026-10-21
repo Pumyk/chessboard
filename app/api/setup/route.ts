@@ -12,10 +12,11 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const key = req.headers.get("x-setup-key") ?? "";
   const secret = process.env.SERVER_SECRET ?? "";
-  if (!secret || key.length !== secret.length || key !== secret) {
+  const secretOk = !!(secret && key.length === secret.length && key === secret);
+  if (!secretOk) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const url = process.env.DATABASE_URL;
+  const url = req.headers.get("x-db-url") ?? process.env.DATABASE_URL;
   if (!url) return NextResponse.json({ error: "DATABASE_URL missing" }, { status: 500 });
   const sql = postgres(url, { ssl: url.includes("supabase.co") ? { rejectUnauthorized: false } : undefined });
   const log: string[] = [];
