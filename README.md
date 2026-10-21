@@ -37,3 +37,16 @@ DATABASE_URL and SESSION_SECRET are read from the environment.
 
 / (lobby) · /play (game) · /leaderboard · /account · /settings
 API: /api/games/* · /api/auth/* · /api/me · /api/challenges/* · /api/leaderboard
+
+## Deploying
+
+Vercel (or any Node host) + any managed Postgres (Supabase/Neon/RDS):
+
+1. `npm i -g vercel && vercel link`
+2. Create a Postgres project (e.g. Supabase) and copy its connection string.
+3. Set env vars in Vercel: `DATABASE_URL` (the Postgres string) and `SERVER_SECRET` (any long random string, `openssl rand -hex 32`).
+4. Apply schema and seed once from your machine:
+   `DATABASE_URL=<prod-url> node db/migrate.mjs && DATABASE_URL=<prod-url> node db/seed.mjs`
+5. `vercel --prod`
+
+Notes: `vercel.json` raises API routes to 60s so the Stockfish analysis endpoint can evaluate full games; the engine is WASM and works on serverless Node 20+. CI (GitHub Actions) already proves the app runs on a cold plain Postgres.
