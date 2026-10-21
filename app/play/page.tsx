@@ -92,6 +92,7 @@ function PlayInner() {
   const tc = params.get("tc") ?? "600+0";
   const [baseSec, incSec] = tc.split("+").map(Number);
   const gameId = params.get("g");
+  const passPlay = params.get("local") === "1"; // pass-and-play: two humans, one device, no server
 
   const finish = useCallback(
     (timeoutSide: "w" | "b" | null = null, resignationBy: "w" | "b" | null = null) => {
@@ -155,6 +156,11 @@ function PlayInner() {
   useEffect(() => {
     let alive = true;
     async function boot() {
+      if (passPlay) {
+        setWhiteMs((baseSec || 600) * 1000);
+        setBlackMs((baseSec || 600) * 1000);
+        return;
+      }
       if (!gameId) {
         const g = await createBotGame(baseSec || 600, incSec || 0);
         if (!alive) return;
@@ -196,7 +202,7 @@ function PlayInner() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId, baseSec, incSec]);
+  }, [gameId, baseSec, incSec, passPlay]);
 
   // Poll human games for opponent moves, draw offers and results.
   useEffect(() => {
@@ -325,8 +331,9 @@ function PlayInner() {
     setSelected(null);
     setPendingPromo(null);
     setFen(chess.fen());
+    if (passPlay) setFlipped(chess.turn() === "b"); // hand the device over rotated
     const gid = game?.id ?? gameId;
-    if (gid) {
+    if (gid && !passPlay) {
       appliedPly.current += 1;
       submitMove(gid, { from, to, promotion: promotion ?? "q" }).then((r) => {
         if (!r.ok) {
@@ -366,10 +373,12 @@ function PlayInner() {
 
   function onSquare(sq: string) {
     if (browsing) return;
-    if (phase !== "active" || chess.turn() !== myColor) return;
+    if (phase !== "active") return;
+    if (!passPlay && chess.turn() !== myColor) return;
     if (selected && tryMove(selected, sq)) return;
     const piece = chess.get(sq as CSquare);
-    if (piece && piece.color === myColor) setSelected(sq);
+    const side = passPlay ? chess.turn() : myColor;
+    if (piece && piece.color === side) setSelected(sq);
     else setSelected(null);
   }
 
@@ -388,7 +397,7 @@ function PlayInner() {
   const canAbort = history.length === 0;
   const meName = me.name === "You" ? "You" : me.name;
 
-  if (!game && !gameId)
+  if (!game && !gameId && !passPlay)
     return (
       <main className="grid min-h-dvh place-items-center">
         <p className="text-sm text-text-muted">Preparing board…</p>
@@ -397,8 +406,12 @@ function PlayInner() {
 
   const mySide = myColor === "w" ? "white" : "black";
   const oppSide = myColor === "w" ? "black" : "white";
-  const top = flipped ? { ...me, name: meName } : opponent;
-  const bottom = flipped ? opponent : { ...me, name: meName };
+  const top = passPlay
+    ? { id: "black", name: "Black", avatar: "BK", rating: null }
+    : flipped ? { ...me, name: meName } : opponent;
+  const bottom = passPlay
+    ? { id: "white", name: "White", avatar: "WH", rating: null }
+    : flipped ? opponent : { ...me, name: meName };
   const orientation = flipped ? oppSide : mySide;
   // clocks stay glued to the player, not the seat
   const topClock = flipped ? (myColor === "w" ? whiteMs : blackMs) : myColor === "w" ? blackMs : whiteMs;
@@ -475,9 +488,11 @@ function PlayInner() {
       <p className="text-center text-sm text-text-muted" aria-live="polite">
         {phase === "finished"
           ? `${outcome?.result}${outcome?.reason ? ` — ${outcome.reason}` : ""}`
-          : myTurn
-            ? "Your move"
-            : `${top.name} is thinking…`}
+          : passPlay
+            ? `${chess.turn() === "w" ? "White" : "Black"} to move`
+            : myTurn
+              ? "Your move"
+              : `${top.name} is thinking…`}
       </p>
 
       {incomingDraw && phase === "active" && (
@@ -516,7 +531,11 @@ function PlayInner() {
         </p>
       )}
 
-      {phase === "active" ? (
+      {phase === "active" && passPlay ? (
+        <Button variant="secondary" className="w-full" onClick={() => (window.location.href = window.location.href)}>
+          Restart local game
+        </Button>
+      ) : phase === "active" ? (
         <div className="flex gap-2">
           <Button variant="secondary" className="flex-1" onClick={doDraw}>
             ½ Draw
@@ -537,7 +556,16 @@ function PlayInner() {
             <Button onClick={() => (window.location.href = "/")} className="flex-1">
               New game
             </Button>
-            {!human && (
+            {passPlay && (
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => (window.location.href = window.location.href)}
+              >
+                Play again
+              </Button>
+            )}
+            {!human && !passPlay && (
               <Button
                 variant="secondary"
                 className="flex-1"

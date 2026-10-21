@@ -178,6 +178,9 @@ export default function Lobby() {
       <Button variant="secondary" onClick={startBot} disabled={mode === "starting-bot"} className="w-full">
         {mode === "starting-bot" ? "Preparing board…" : `Practice vs a bot (${sel.label})`}
       </Button>
+      <Button variant="secondary" onClick={() => router.push(`/play?local=1&tc=${sel.seconds}+${sel.increment}`)} className="w-full">
+        Pass and play on this device
+      </Button>
 
       <p className="text-center text-xs text-text-muted">
         Rated quick pairing against real opponents, or a casual unrated bot game.
