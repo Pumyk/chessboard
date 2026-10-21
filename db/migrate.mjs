@@ -9,7 +9,12 @@ if (!url) { console.error("DATABASE_URL is required"); process.exit(1); }
 const sql = postgres(url, { ssl: url.includes("supabase.co") ? { rejectUnauthorized: false } : undefined });
 
 await sql`create schema if not exists auth`;
-await sql`create table if not exists auth.users (id uuid primary key, email text, created_at timestamptz default now())`; // no-op on Supabase; local shim
+await sql`create table if not exists auth.users (id uuid primary key, email text, created_at timestamptz default now())`;
+// auth.uid() shim so migrations with RLS policies also apply on a plain
+// Postgres (CI); Supabase and the local pglite server already define it.
+await sql`create schema if not exists auth`;
+await sql`create or replace function auth.uid() returns uuid language sql stable
+  as \$\$ select nullif(current_setting('app.current_user', true), '')::uuid \$\$`; // no-op on Supabase; local shim
 await sql`create table if not exists migrations (name text primary key, applied_at timestamptz default now())`;
 
 for (const f of readdirSync("db/migrations").sort()) {
