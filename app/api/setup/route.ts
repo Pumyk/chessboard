@@ -21,11 +21,14 @@ export async function POST(req: NextRequest) {
   const sql = postgres(url, { ssl: url.includes("supabase.co") ? { rejectUnauthorized: false } : undefined });
   const log: string[] = [];
   try {
-    // same preamble as db/migrate.mjs
-    await sql`create schema if not exists auth`;
-    await sql`create table if not exists auth.users (id uuid primary key, email text, created_at timestamptz default now())`;
-    await sql`create or replace function auth.uid() returns uuid language sql stable
-      as $$ select nullif(current_setting('app.current_user', true), '')::uuid $$`;
+    // best-effort preamble (see db/migrate.mjs): on hosted Supabase the auth
+    // schema is not writable and already exists.
+    try {
+      await sql`create schema if not exists auth`;
+      await sql`create table if not exists auth.users (id uuid primary key, email text, created_at timestamptz default now())`;
+      await sql`create or replace function auth.uid() returns uuid language sql stable
+        as $$ select nullif(current_setting('app.current_user', true), '')::uuid $$`;
+    } catch (e) { log.push("auth schema managed externally, skipping"); }
     await sql`create table if not exists migrations (name text primary key, applied_at timestamptz default now())`;
     const dir = join(process.cwd(), "db", "migrations");
     let names: string[] = [];

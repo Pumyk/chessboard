@@ -5,6 +5,12 @@
 
 -- gen_random_uuid() is built into Postgres 13+; no extension needed
 
+-- Current user: the app sets app.current_user per connection (guest or
+-- auth). Same semantics as the current_user_id() shim, but in public so it also
+-- works on hosted Supabase where the auth schema is not writable.
+create or replace function current_user_id() returns uuid language sql stable
+  as $$ select nullif(current_setting('app.current_user', true), '')::uuid $$;
+
 -- ============ profiles (guest or member) ============
 create table profiles (
   id uuid primary key default gen_random_uuid(),
@@ -158,24 +164,24 @@ alter table challenges    enable row level security;
 alter table chat_messages enable row level security;
 
 create policy "own profile" on profiles for all
-  using (id = auth.uid() or auth_user_id = auth.uid());
+  using (id = current_user_id() or auth_user_id = current_user_id());
 create policy "ratings readable" on ratings for select using (true); -- ratings are public
 create policy "game participants read" on games for select
-  using (white_id = (select id from profiles where auth_user_id = auth.uid())
-      or black_id = (select id from profiles where auth_user_id = auth.uid()));
+  using (white_id = (select id from profiles where auth_user_id = current_user_id())
+      or black_id = (select id from profiles where auth_user_id = current_user_id()));
 create policy "moves readable by game participants" on moves for select
   using (exists (select 1 from games g where g.id = game_id
-           and (g.white_id = (select id from profiles where auth_user_id = auth.uid())
-            or g.black_id = (select id from profiles where auth_user_id = auth.uid()))));
+           and (g.white_id = (select id from profiles where auth_user_id = current_user_id())
+            or g.black_id = (select id from profiles where auth_user_id = current_user_id()))));
 create policy "own ticket" on search_tickets for all
-  using (user_id = (select id from profiles where auth_user_id = auth.uid()));
+  using (user_id = (select id from profiles where auth_user_id = current_user_id()));
 create policy "open challenges readable" on challenges for select using (true);
 create policy "own chat rows" on chat_messages for insert
-  with check (user_id = (select id from profiles where auth_user_id = auth.uid()));
+  with check (user_id = (select id from profiles where auth_user_id = current_user_id()));
 create policy "chat readable by game participants" on chat_messages for select
   using (exists (select 1 from games g where g.id = game_id
-           and (g.white_id = (select id from profiles where auth_user_id = auth.uid())
-            or g.black_id = (select id from profiles where auth_user_id = auth.uid()))));
+           and (g.white_id = (select id from profiles where auth_user_id = current_user_id())
+            or g.black_id = (select id from profiles where auth_user_id = current_user_id()))));
 
 -- games, moves, ratings are WRITTEN only by security definer RPCs
 -- (apply_move, finalize_game, pair_queue) — no client-side insert/update policies.
