@@ -47,7 +47,7 @@ export function Board({
     <div
       role="grid"
       aria-label="Chess board"
-      className="grid aspect-square w-full grid-cols-8 overflow-hidden rounded-lg shadow-card"
+      className="grid aspect-square w-full grid-cols-8 grid-rows-8 overflow-hidden rounded-lg shadow-card"
     >
       {squares.map(({ square, piece }, i) => {
         const row = Math.floor(i / 8);
@@ -86,7 +86,11 @@ export function Board({
             {isTarget && (
               <span
                 aria-hidden
-                className={`absolute ${piece ? "inset-1 rounded-full border-4 border-move-hint" : "h-1/4 w-1/4 rounded-full bg-move-hint"}`}
+                className={
+                  piece
+                    ? "absolute inset-[6%] rounded-full border-[0.3rem] border-move-hint bg-transparent"
+                    : "absolute left-1/2 top-1/2 h-[28%] w-[28%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-move-hint"
+                }
               />
             )}
             {piece && (

@@ -23,7 +23,7 @@
   --color-board-light: #D9E1EE;
   --color-board-dark: #54749F;
   --color-last-move: #3D63B8;     /* last-move square tint */
-  --color-move-hint: rgba(46, 119, 255, 0.35);
+  --color-move-hint: rgba(28, 40, 70, 0.45); /* dark dot: readable on light and dark squares */
   --color-check: #F2555A;
 
   /* type */

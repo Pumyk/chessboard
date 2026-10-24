@@ -21,8 +21,11 @@ export default {
         warning: "var(--color-warning)",
         board: { light: "var(--color-board-light)", dark: "var(--color-board-dark)" },
         "last-move": "var(--color-last-move)",
+        "move-hint": "var(--color-move-hint)",
+        check: "var(--color-check)",
       },
-      fontFamily: {
+      gridTemplateRows: { "8": "repeat(8, minmax(0, 1fr))" },
+        fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
