@@ -163,9 +163,9 @@ export default function Lobby() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-4 p-4">
-      <header className="flex flex-wrap items-baseline justify-between gap-2">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">ChessBoard</h1>
+          <h1 className="text-xl font-bold tracking-tight">ChessBoard</h1>
           <p className="text-sm text-text-muted">
             Playing as {ident.name}
             {ratings.length > 0 && (
@@ -180,14 +180,32 @@ export default function Lobby() {
             )}
           </p>
         </div>
-        <nav className="flex gap-2 text-sm">
-          <a href="/leaderboard" className="text-text-muted hover:text-text">Leaderboard</a>
-          <a href="/settings" className="text-text-muted hover:text-text">Settings</a>
+        <nav
+          aria-label="Main menu"
+          className="flex items-center gap-1 rounded-pill border border-border bg-surface p-1 text-sm"
+        >
+          <a
+            href="/leaderboard"
+            className="rounded-pill px-3 py-1.5 text-text-muted transition-fast hover:bg-surface-raised hover:text-text"
+          >
+            Leaderboard
+          </a>
+          <a
+            href="/settings"
+            className="rounded-pill px-3 py-1.5 text-text-muted transition-fast hover:bg-surface-raised hover:text-text"
+          >
+            Settings
+          </a>
           {ident.name === "You" ? (
-            <a href="/account" className="text-text-muted hover:text-text">Sign up / Log in</a>
+            <a
+              href="/account"
+              className="rounded-pill px-3 py-1.5 text-text-muted transition-fast hover:bg-surface-raised hover:text-text"
+            >
+              Sign up
+            </a>
           ) : (
             <button
-              className="text-text-muted hover:text-text"
+              className="rounded-pill px-3 py-1.5 text-text-muted transition-fast hover:bg-surface-raised hover:text-text"
               onClick={async () => { await logout().catch(() => null); setTick((t) => t + 1); }}
             >
               Log out
@@ -200,21 +218,29 @@ export default function Lobby() {
         <h2 id="tc-h" className="mb-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
           Time control
         </h2>
-        <div className="flex flex-wrap gap-2">
-          {CONTROLS.map((c) => (
-            <button
-              key={c.label}
-              onClick={() => setSel(c)}
-              aria-pressed={sel.label === c.label}
-              className={`min-h-9 rounded-pill border px-3.5 text-xs font-semibold ${
-                sel.label === c.label
-                  ? "border-accent bg-accent-soft text-text"
-                  : "border-border bg-surface-raised text-text-muted hover:text-text"
-              }`}
-            >
-              <span className="sr-only">{c.group}: </span>
-              {c.label}
-            </button>
+        <div className="flex flex-col gap-3">
+          {["Bullet", "Blitz", "Rapid"].map((group) => (
+            <div key={group}>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted opacity-80">
+                {group}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {CONTROLS.filter((c) => c.group === group).map((c) => (
+                  <button
+                    key={c.label}
+                    onClick={() => setSel(c)}
+                    aria-pressed={sel.label === c.label}
+                    className={`min-h-9 rounded-pill border px-3.5 text-xs font-semibold ${
+                      sel.label === c.label
+                        ? "border-accent bg-accent-soft text-text"
+                        : "border-border bg-surface-raised text-text-muted hover:text-text"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </section>

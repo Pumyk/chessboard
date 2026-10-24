@@ -93,9 +93,21 @@ export function Board({
               <span
                 aria-hidden
                 className={`relative z-1 select-none text-[7vmin] leading-none sm:text-[34px] ${
-                  piece.color === "w" ? "text-white" : "text-black"
-                } ${pieceSet === "letters" ? "font-bold" : ""}`}
-                style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,.4))" }}
+                  pieceSet === "letters" ? "font-bold" : ""
+                }`}
+                style={
+                  pieceSet === "letters"
+                    ? {
+                        color: piece.color === "w" ? "#FAFBFD" : "#15171F",
+                        textShadow: "0 1px 1px rgba(0,0,0,.45)",
+                      }
+                    : {
+                        // filled glyphs for both colors + contrasting outline =
+                        // crisp, readable pieces on any board theme
+                        color: piece.color === "w" ? "#F7F8FA" : "#191B24",
+                        WebkitTextStroke: piece.color === "w" ? "1.2px #12141C" : "1.2px rgba(238,242,250,.6)",
+                      }
+                }
               >
                 {pieceSet === "letters" ? LETTER[piece.type] : GLYPH[piece.type]}
               </span>

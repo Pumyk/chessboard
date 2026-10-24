@@ -5,17 +5,17 @@
 /* ChessBoard design tokens — blue-black. Generated from replica/design/tokens.json. */
 :root {
   /* color roles */
-  --color-bg: #070B12;
-  --color-surface: #0D1522;
-  --color-surface-raised: #121D30;
-  --color-border: #1C2A44;
-  --color-border-input: #4A69AF;
-  --color-text: #E8EDF6;
-  --color-text-muted: #8B99B0;
+  --color-bg: #000000;
+  --color-surface: #0A0B10;
+  --color-surface-raised: #13151E;
+  --color-border: #1B1D29;
+  --color-border-input: #3E445E;
+  --color-text: #F2F5FA;
+  --color-text-muted: #8D97AC;
   --color-accent: #2E77FF;        /* links, focus rings, highlights */
   --color-accent-strong: #1D5FE8; /* primary button fill */
   --color-on-accent: #FFFFFF;
-  --color-accent-soft: #122855;   /* selected tiles, chips, active tabs */
+  --color-accent-soft: #0E1B3F;   /* selected tiles, chips, active tabs */
   --color-danger: #F2555A;
   --color-success: #3ECF6E;
   --color-warning: #F5A524;

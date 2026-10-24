@@ -143,7 +143,7 @@ export async function createBotGame(
   return {
     id: game_id,
     white: me,
-    black: { id: `bot-${botElo}`, name: `Bot (${botElo})`, avatar: "B", rating: botElo },
+    black: { id: `bot-${botElo}`, name: "Bot", avatar: "B", rating: botElo },
     timeControlSeconds: seconds,
     incrementSeconds: increment,
     category: seconds < 180 ? "bullet" : seconds < 600 ? "blitz" : "rapid",
