@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/Button";
 import {
   cancelQuick, cachedRatings, createBotGame, createChallenge, getChallenge,
+  acceptChallengeByCode,
   getMe, logout, quickPair, refreshMe,
 } from "@/lib/datalayer";
 
@@ -39,9 +40,12 @@ export default function Lobby() {
   const [ident, setIdent] = useState(getMe());
   const [ratings, setRatings] = useState<ReturnType<typeof cachedRatings>>([]);
   const [tick, setTick] = useState(0);
-  const [challenge, setChallenge] = useState<{ id: string; link: string } | null>(null);
+  const [challenge, setChallenge] = useState<{ id: string; link: string; code: string } | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [joinBusy, setJoinBusy] = useState(false);
+  const [joinErr, setJoinErr] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
   const [tip, setTip] = useState(0);
   const [seconds, setSeconds] = useState(0);
@@ -107,6 +111,22 @@ export default function Lobby() {
     setMode("idle");
   }
 
+  async function joinByCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!joinCode.trim() || joinBusy) return;
+    setJoinBusy(true);
+    setJoinErr(null);
+    const r = await acceptChallengeByCode(joinCode.trim()).catch((err) => ({
+      error: err instanceof Error ? err.message : "join failed",
+    }));
+    setJoinBusy(false);
+    if (r && "game_id" in r && r.game_id) {
+      router.push(`/play?g=${r.game_id}`);
+      return;
+    }
+    setJoinErr((r as { error?: string })?.error ?? "Couldn't join that code.");
+  }
+
   async function startBot() {
     setMode("starting-bot");
     const g = await createBotGame(sel.seconds, sel.increment);
@@ -119,6 +139,11 @@ export default function Lobby() {
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-5 p-8 text-center">
         <h1 className="text-lg font-bold">Waiting for your friend…</h1>
         <p className="text-sm text-text-muted">Share this link — the game starts the moment they open it.</p>
+        <div className="flex flex-col items-center gap-1 rounded-lg border border-border bg-surface p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Room code</p>
+          <p className="text-3xl font-bold tracking-[0.3em] tabular-nums">{challenge.code}</p>
+          <p className="text-xs text-text-muted">…or they can type this code under &ldquo;Join with a code&rdquo;.</p>
+        </div>
         <button
           className="w-full truncate rounded-md border border-border bg-surface-raised p-3 text-sm"
           onClick={async () => { await navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
@@ -266,6 +291,34 @@ export default function Lobby() {
       >
         Challenge a friend ({sel.label})
       </Button>
+
+      <section
+        aria-labelledby="join-h"
+        className="rounded-lg border border-border bg-surface p-4"
+      >
+        <h2 id="join-h" className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
+          Join with a code
+        </h2>
+        <form className="flex gap-2" onSubmit={joinByCode}>
+          <input
+            value={joinCode}
+            onChange={(e) => {
+              setJoinCode(e.target.value.toUpperCase());
+              setJoinErr(null);
+            }}
+            maxLength={12}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="FRIEND'S CODE"
+            aria-label="Room code"
+            className="min-h-12 w-full rounded-md border border-border-input bg-surface-raised px-4 text-center text-base font-bold tracking-[0.3em] tabular-nums outline-none focus-visible:border-accent"
+          />
+          <Button type="submit" variant="secondary" disabled={joinBusy || !joinCode.trim()}>
+            {joinBusy ? "Joining…" : "Join"}
+          </Button>
+        </form>
+        {joinErr && <p className="mt-2 text-xs text-danger">{joinErr}</p>}
+      </section>
 
       <p className="text-center text-xs text-text-muted">
         Rated quick pairing against real opponents, or a casual unrated bot game.

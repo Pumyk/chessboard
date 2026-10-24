@@ -89,6 +89,7 @@ function PlayInner() {
   const [chatDraft, setChatDraft] = useState("");
   const [lowBeeped, setLowBeeped] = useState<"w" | "b" | null>(null);
   const [boardTheme, setBoardTheme] = useState(getTheme());
+  const [fatal, setFatal] = useState<string | null>(null);
   const [pieceSet, setPieceSet] = useState<"classic" | "letters">("classic");
   const [boardCoords, setBoardCoords] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -170,15 +171,22 @@ function PlayInner() {
   useEffect(() => {
     let alive = true;
     async function boot() {
-      // arriving from a challenge link: accept it and jump into the game
+      // arriving from a challenge link: accept it and jump into the game.
+      // If the accept fails we STOP — never silently fall through to a bot
+      // game, which is what used to happen when the accept call errored.
       const challengeId = params.get("c");
       if (challengeId) {
-        const r = await acceptChallenge(challengeId).catch(() => null);
-        if (r?.game_id) {
+        const r = await acceptChallenge(challengeId).catch((e) => ({
+          error: e instanceof Error ? e.message : "accept failed",
+        }));
+        if (r && "game_id" in r && r.game_id) {
           window.location.replace(`/play?g=${r.game_id}`);
           return;
         }
-        if (r?.status === "accepted" && r.game_id === undefined) { /* claimed by other accept */ }
+        setFatal(
+          (r as { error?: string })?.error ?? "This challenge link is no longer valid."
+        );
+        return;
       }
       if (passPlay) {
         setWhiteMs((baseSec || 600) * 1000);
@@ -420,6 +428,19 @@ function PlayInner() {
   const myTurn = phase === "active" && chess.turn() === myColor;
   const canAbort = history.length === 0;
   const meName = me.name === "You" ? "You" : me.name;
+
+  if (fatal)
+    return (
+      <main className="mx-auto grid min-h-dvh max-w-md place-items-center p-8 text-center">
+        <div className="flex flex-col gap-4">
+          <h1 className="text-lg font-bold">Can&apos;t join that game</h1>
+          <p className="text-sm text-text-muted">{fatal}</p>
+          <a href="/" className="text-sm font-semibold text-accent-strong hover:brightness-110">
+            Back to the lobby
+          </a>
+        </div>
+      </main>
+    );
 
   if (!game && !gameId && !passPlay)
     return (

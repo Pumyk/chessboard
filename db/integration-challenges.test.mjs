@@ -30,6 +30,32 @@ const cid = r.data.challenge.id;
 r = await call("c", `/challenges/${cid}`);
 ok("status open before accept", r.status === 200 && r.data.challenge?.status === "open");
 
+// create returns a room code
+r = await call("c", "/challenges", { time_control_seconds: 300, increment_seconds: 0 });
+const codeC = r.data.challenge?.code;
+const cidC = r.data.challenge?.id;
+ok("create returns room code", typeof codeC === "string" && /^[A-Z2-9]{6}$/.test(codeC), JSON.stringify(r.data).slice(0, 120));
+
+// creator can't accept their own challenge (by link or code)
+r = await call("c", `/challenges/${cidC}`, {}, "POST");
+ok("creator self-accept by id rejected", r.status === 409, JSON.stringify(r.data).slice(0, 120));
+r = await call("c", "/challenges/accept", { code: codeC });
+ok("creator self-accept by code rejected", r.status === 409, JSON.stringify(r.data).slice(0, 120));
+r = await call("c", `/challenges/${cidC}`);
+ok("challenge stays open after self-accept attempts", r.data.challenge?.status === "open");
+
+// unknown code → 404
+r = await call("g", "/me", {});
+r = await call("g", "/challenges/accept", { code: "ZZZZ99" });
+ok("unknown code rejected", r.status === 404, JSON.stringify(r.data).slice(0, 120));
+
+// a third friend joins by code
+r = await call("g", "/challenges/accept", { code: codeC });
+ok("accept by code returns game", r.status === 200 && !!r.data.game_id, JSON.stringify(r.data).slice(0, 160));
+const gidC = r.data.game_id;
+r = await call("c", `/challenges/${cidC}`);
+ok("creator sees code-joined game", r.data.challenge?.status === "accepted" && r.data.challenge?.game_id === gidC);
+
 // accept by the friend
 r = await call("f", `/challenges/${cid}`, {}, "POST");
 ok("accept returns game", r.status === 200 && r.data.status === "accepted" && !!r.data.game_id, JSON.stringify(r.data).slice(0, 160));

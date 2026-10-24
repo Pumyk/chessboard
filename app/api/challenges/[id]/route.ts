@@ -25,6 +25,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     where id = ${id} and status = 'open'
     returning *`;
   const c = claimed[0];
+  if (c && c.creator_id === me.id) {
+    // give the claim back — the creator opening their own link must not
+    // start a game against themselves
+    await db`update challenges set status = 'open', updated_at = now() where id = ${id}`;
+    return NextResponse.json({ error: "this is your own challenge — share the link with your friend" }, { status: 409 });
+  }
   if (!c) {
     const [existing] = await db`select status, game_id from challenges where id = ${id}`;
     if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });

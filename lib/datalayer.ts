@@ -101,7 +101,7 @@ export async function loadChat(gameId: string): Promise<{ body: string; username
 
 export async function createChallenge(
   seconds: number, increment: number, rated = true
-): Promise<{ id: string; link: string }> {
+): Promise<{ id: string; link: string; code: string }> {
   const { challenge } = await api("/challenges", {
     time_control_seconds: seconds, increment_seconds: increment, rated,
   });
@@ -115,6 +115,12 @@ export async function acceptChallenge(id: string): Promise<{ status: string; gam
 export async function getChallenge(id: string): Promise<{ status: string; game_id: string | null }> {
   const { challenge } = await api(`/challenges/${id}`);
   return challenge;
+}
+
+export async function acceptChallengeByCode(
+  code: string
+): Promise<{ status: string; game_id?: string }> {
+  return api("/challenges/accept", { code });
 }
 
 export type PlyEval = { ply: number; san: string | null; cp: number; mate: boolean };
