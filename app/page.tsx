@@ -172,7 +172,7 @@ export default function Lobby() {
               <span aria-label="My ratings" className="ml-2">
                 {ratings.map((r) => (
                   <span key={r.category} className="ml-1 text-xs">
-                    {r.category[0].toUpperCase()}
+                    {({bullet: "Bu", blitz: "Bz", rapid: "R"} as Record<string, string>)[r.category] ?? r.category[0].toUpperCase()}
                     {" "}{r.provisional ? `${r.glicko}±${200}` : r.glicko}
                   </span>
                 ))}
