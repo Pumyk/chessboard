@@ -43,8 +43,9 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     const uci = ev.bestmove;
     if (/^[a-h][1-8][a-h][1-8]/.test(uci))
       m = { from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4], san: "" };
-  } catch {
+  } catch (e) {
     // engine unavailable: fall back to the casual heuristic bot
+    console.error("engine-fallback:", e instanceof Error ? e.message : String(e));
   }
   const applied = m
     ? await applyServerMove((await ctx.params).id, gameRow.black_id, {
