@@ -32,7 +32,16 @@ const TIPS = [
   "Tip: trade pieces when you're ahead, keep the tension when behind.",
 ];
 
-type Mode = "idle" | "searching" | "starting-bot" | "challenging";
+type Mode = "idle" | "searching" | "none-found" | "starting-bot" | "challenging";
+
+// Bot difficulty levels — Elo drives engine skill + thinking time server-side.
+const BOT_LEVELS: { elo: number; name: string }[] = [
+  { elo: 400, name: "Beginner" },
+  { elo: 800, name: "Casual" },
+  { elo: 1200, name: "Intermediate" },
+  { elo: 1600, name: "Advanced" },
+  { elo: 2000, name: "Expert" },
+];
 
 export default function Lobby() {
   const router = useRouter();
@@ -44,6 +53,7 @@ export default function Lobby() {
   const [elapsed, setElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
   const [joinCode, setJoinCode] = useState("");
+  const [botStarting, setBotStarting] = useState<number | null>(null);
   const [joinBusy, setJoinBusy] = useState(false);
   const [joinErr, setJoinErr] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
@@ -100,7 +110,11 @@ export default function Lobby() {
       // widen the poll a little as the search goes on (first check is quick)
       await new Promise((res) => setTimeout(res, Math.min(backoff, 3000)));
       backoff += 100;
-      if (Date.now() - started > 120000) break; // give up after 2 minutes
+      if (Date.now() - started > 120000) {
+        // nobody is searching this time control — say so instead of spinning
+        setMode("none-found");
+        return;
+      }
     }
   }
 
@@ -127,9 +141,10 @@ export default function Lobby() {
     setJoinErr((r as { error?: string })?.error ?? "Couldn't join that code.");
   }
 
-  async function startBot() {
+  async function startBot(botElo: number) {
     setMode("starting-bot");
-    const g = await createBotGame(sel.seconds, sel.increment);
+    setBotStarting(botElo);
+    const g = await createBotGame(sel.seconds, sel.increment, botElo);
     router.push(`/play?g=${g.id}&tc=${sel.seconds}+${sel.increment}`);
   }
 
@@ -158,6 +173,25 @@ export default function Lobby() {
     );
   }
 
+  if (mode === "none-found") {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-5 p-8 text-center">
+        <h1 className="text-lg font-bold">No opponent found</h1>
+        <p className="text-sm text-text-muted">
+          Nobody was searching the {sel.label} pool in the last two minutes. Quick pairing
+          needs both players searching the same time control at the same time.
+        </p>
+        <Button onClick={searchOnline} className="w-full">Search again</Button>
+        <Button variant="secondary" onClick={() => startBot(800)} className="w-full">
+          Play a bot instead
+        </Button>
+        <Button variant="ghost" onClick={() => setMode("idle")} className="w-full">
+          Back to the lobby
+        </Button>
+      </main>
+    );
+  }
+
   if (mode === "searching") {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-6 p-8 text-center">
@@ -174,6 +208,12 @@ export default function Lobby() {
         {elapsed >= 15 && (
           <p role="status" className="text-sm text-text-muted">
             Still searching — widening the rating range to find the closest match.
+          </p>
+        )}
+        {elapsed >= 25 && (
+          <p role="status" className="text-xs text-text-muted opacity-80">
+            Both players must pick the same time control — and two tabs of the same
+            browser can&apos;t pair (same guest). Use a challenge link for that.
           </p>
         )}
         <p key={tip} className="min-h-10 text-sm text-text-muted">
@@ -273,9 +313,28 @@ export default function Lobby() {
       <Button onClick={searchOnline} className="w-full text-base">
         Play {sel.label} online
       </Button>
-      <Button variant="secondary" onClick={startBot} disabled={mode === "starting-bot"} className="w-full">
-        {mode === "starting-bot" ? "Preparing board…" : `Practice vs a bot (${sel.label})`}
-      </Button>
+      <section aria-labelledby="bot-h" className="rounded-lg border border-border bg-surface p-4">
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h2 id="bot-h" className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+            Practice vs a bot
+          </h2>
+          <span className="text-xs text-text-muted">{sel.label}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {BOT_LEVELS.map((bl) => (
+            <button
+              key={bl.elo}
+              onClick={() => startBot(bl.elo)}
+              disabled={mode === "starting-bot"}
+              aria-label={`Start a bot game at ${bl.name} difficulty, ${bl.elo} Elo`}
+              className="min-h-9 flex-1 basis-28 rounded-pill border border-border bg-surface-raised px-3 py-1.5 text-xs font-semibold text-text transition-fast hover:border-border-input disabled:opacity-50"
+            >
+              {mode === "starting-bot" && botStarting === bl.elo ? "…" : bl.name}
+              <span aria-hidden className="ml-1.5 font-normal text-text-muted">{bl.elo}</span>
+            </button>
+          ))}
+        </div>
+      </section>
       <Button variant="secondary" onClick={() => router.push(`/play?local=1&tc=${sel.seconds}+${sel.increment}`)} className="w-full">
         Pass and play on this device
       </Button>
