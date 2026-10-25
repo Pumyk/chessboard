@@ -7,8 +7,8 @@ const nextConfig = {
     "/api/setup": ["./db/migrations/**/*"],
     // the engine is loaded via createRequire at runtime — static tracing can't
     // see it, so ship the WASM bundle explicitly with every engine route
-    "/api/games/[id]/bot-move": ["./node_modules/stockfish.js/**"],
-    "/api/games/[id]/analysis": ["./node_modules/stockfish.js/**"],
+    "/api/games/[id]/bot-move": ["./engine/**"],
+    "/api/games/[id]/analysis": ["./engine/**"],
   },
 };
 export default nextConfig;

@@ -7,6 +7,11 @@ import { createRequire } from "module";
 import fs from "fs";
 import path from "path";
 
+// The engine lives in /engine (vendored), NOT node_modules: serverless
+// bundlers don't reliably ship dynamically-required packages, but a
+// traced project folder always makes it into the lambda.
+const ENGINE_DIR = path.join(process.cwd(), "engine");
+
 type Waiter = { until: (line: string) => boolean; resolve: (lines: string[]) => void; buf: string[] };
 
 let booting: Promise<void> | null = null;
@@ -17,8 +22,8 @@ function send(cmd: string) {
 }
 
 function install() {
-  const req = createRequire(path.join(process.cwd(), "package.json"));
-  const dir = path.dirname(req.resolve("stockfish.js/package.json"));
+  const req = createRequire(path.join(ENGINE_DIR, "noop.js"));
+  const dir = ENGINE_DIR;
   const realFetch = (globalThis as { fetch?: typeof fetch }).fetch?.bind(globalThis);
   (globalThis as { fetch?: typeof fetch }).fetch = ((u: string | URL | Request, ...rest: unknown[]) => {
     if (typeof u === "string" && u.startsWith("stockfish")) {
@@ -38,7 +43,7 @@ function install() {
       }
     }
   };
-  req("stockfish.js/stockfish.wasm.js"); // defines globalThis.onmessage
+  req(path.join(ENGINE_DIR, "stockfish.wasm.js")); // defines globalThis.onmessage
 }
 
 export function ensureEngine(): Promise<void> {
